@@ -61,7 +61,7 @@ public actor StravaClient {
         var streams = StravaStreams.empty
         if source.manual != true {
             let response = try await get(path: "/activities/\(id)/streams", query: [
-                .init(name: "keys", value: "time,latlng,altitude,heartrate,watts,cadence,velocity_smooth"), .init(name: "key_by_type", value: "true")
+                .init(name: "keys", value: "time,latlng,altitude,heartrate,watts,cadence,velocity_smooth,moving,distance"), .init(name: "key_by_type", value: "true")
             ], allowMissing: true)
             if response.status != 404 { streams = try StravaJSON.decode(StravaStreams.self, from: response.data) }
         }

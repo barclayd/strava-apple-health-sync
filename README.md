@@ -18,6 +18,7 @@ Currently supported:
 * Individual UTF-8 TCX activity files containing runs or rides
 * Original timestamps, distance, recorded heart-rate samples and GPS route; TCX timer duration or Strava elapsed duration
 * Cycling power (with an estimated-power marker when applicable), cadence, speed, elevation gain and indoor/outdoor status from Strava
+* Estimated pause/resume events from Strava movement samples and stationary recording gaps, with a preview and an option to retain elapsed duration
 * Strava calories shown in preview, with an explicit choice to interpret them as active energy
 * A review screen and explicit user confirmation before any Health write
 * Stable per-activity identifiers, a persistent import journal and conservative matching against visible Health workouts
@@ -28,12 +29,12 @@ Limits:
 
 * Up to 20 files, 20 MB combined, 100 activities and 100,000 track points per selection; each activity is confirmed individually
 * FIT, GPX, ZIP archives, sports other than runs/rides, full-history/ongoing sync and edited-workout reconciliation are not implemented
-* Strava does not provide the original recording timer or pause timeline. Its elapsed time is used as the Health workout duration; moving time is shown separately and never presented as timer duration
+* Strava does not provide Garmin's original timer events. Full-resolution movement samples and stationary recording gaps can estimate pauses; these are shown before importing and can be disabled. Health receives real pause/resume events without shifting sample timestamps. Workout duration excludes enabled pauses; Strava moving time remains separate. Fitness controls graph presentation
 * Missing streams produce a summary-only preview. No heart-rate or route samples are invented
 * TCX calories, cadence and power remain unsupported. Strava’s calorie value has no active/resting split: active energy is written only when the user enables that interpretation. No resting calories are fabricated
 * Only available cycling streams become Health samples. Summary-only power/cadence averages are not expanded into invented time series. Device/Strava estimates retain their source limitations
 * Route altitudes preserve the source's elevation profile, including zero and negative elevations. Missing altitudes remain invalid. Strava and TCX do not supply recording accuracy: imported route points use a documented 50 m accuracy assumption so Core Location treats supplied coordinates/altitudes as valid. Route metadata labels this assumption; it is not measured sensor precision or a guaranteed error bound
-* No fabricated sensor readings, pause events, calorie totals or missing altitude values
+* No fabricated sensor readings, calorie totals or missing altitude values. Inferred pauses are explicitly labelled as estimates in the preview and Health event metadata
 * Ambiguous duplicates are blocked, with no override in this first POC
 * Read permission can be denied or limited without a distinguishable empty-result error. Users must allow full workout history and review the date in Health. Cross-app duplicate prevention cannot be guaranteed when Health hides data
 * When compiled with Xcode 27.1 / Swift 6.4 or later, the app also checks iOS 27's earliest-authorised-date API and blocks imports outside a known limited history window. Older toolchains retain the explicit user review safeguard
@@ -58,7 +59,7 @@ The redirect is `healthimport-strava://YOUR_CALLBACK_HOST/oauth/callback`. It us
 
 1. Tap **Connect with Strava** and approve the activity read permission
 2. Choose yesterday’s activity (or adjust the trial date and tap **Find activities**)
-3. Review the timestamp, distance, elapsed versus moving time, cycling sample counts and elevation. Enable **Use Strava calories as active energy** only if that interpretation matches the recording
+3. Review the timestamp, distance, duration, detected breaks, cycling sample counts and elevation. **Treat detected breaks as pauses** is enabled when breaks are found; disable it to retain elapsed duration. Enable **Use Strava calories as active energy** only if that interpretation matches the recording
 4. Check the date in Apple Health, then confirm **Save to Health** and grant the requested Health access
 5. Check the workout in Health/Fitness, including its source and available heart rate/route. The trial blocks a second Strava import
 6. Use **Undo import** if needed. Full-history sync stays disabled until this trial is accepted
@@ -84,7 +85,7 @@ xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-For the HealthKit integration tests, first import both synthetic examples in a dedicated simulator and grant Health access, enabling active energy for the synthetic ride. Tests check saved values, cycling statistics, duplicate matching, route/sample counts, round-trip route altitude validity (including missing, zero and negative values) and scoped undo. They skip on physical devices and simulators without write permission. Use that simulator's ID:
+For the HealthKit integration tests, first import the synthetic run and ride in a dedicated simulator and grant Health access, enabling active energy for the ride. Tests check saved values, cycling statistics, duplicate matching, round-trip route altitudes, pause-adjusted duration with unchanged dates/totals and scoped undo. They skip on physical devices and simulators without write permission. Use that simulator's ID:
 
 ```sh
 xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \
@@ -108,6 +109,10 @@ Keep default ad-hoc signing enabled when running or testing in a simulator; `COD
 The TCX export endpoint may be unavailable for activities without GPS; use original FIT files for those once FIT support is implemented. Original exported measurements may differ from Strava's subsequently corrected or recalculated values.
 
 ## Design
+
+Pause detection requires original stream timing and a median sample interval of at most 10 seconds. Contiguous `moving == false` intervals become estimated pauses. Gaps of at least 30 seconds and ten times the normal sample interval require no more than 20 metres of cumulative travel (or endpoint displacement when distance is absent). A gap without a nonmoving flag retains one normal sampling interval before the estimated pause. Downsampled, sparse, unlocated or moving gaps are not automatically treated as breaks. Leading/trailing missing samples are not extrapolated into pauses, and an all-paused result is rejected. These rules cannot distinguish every sensor dropout from a recording pause, so the preview retains the user's choice
+
+When pauses are enabled, distance and chosen active-energy totals are apportioned across unpaused intervals in proportion to their durations. HealthKit would otherwise prorate a whole-workout summary sample and discard part of its total. The original totals are preserved; sample metadata labels their temporal distribution as estimated. Recorded route, heart-rate, power, cadence and speed timestamps are never shifted
 
 `ActivityImportCore` contains the bounded XML parser, Strava API client and mapping, OAuth validation, stable identity, duplicate matching and durable import journal. It is a local Swift package with no dependencies and can be tested on macOS without HealthKit. API tests use synthetic responses and never call Strava.
 

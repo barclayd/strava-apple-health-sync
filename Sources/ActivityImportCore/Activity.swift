@@ -17,6 +17,8 @@ public struct TrackPoint: Sendable, Equatable {
     public var power: Double? = nil
     public var cadence: Double? = nil
     public var speed: Double? = nil
+    public var moving: Bool? = nil
+    public var cumulativeDistance: Double? = nil
 }
 
 public struct Activity: Identifiable, Sendable {
@@ -33,6 +35,10 @@ public struct Activity: Identifiable, Sendable {
     public var elevationGain: Double? = nil
     public var indoor: Bool? = nil
     public var powerIsEstimated = false
+    /// Estimated from Strava movement samples and stationary recording gaps, not device timer events.
+    public var pauses: [DateInterval] = []
+    public var pausedDuration: TimeInterval { pauses.reduce(0) { $0 + $1.duration } }
+    public var workoutDuration: TimeInterval { duration - pausedDuration }
 
     /// Stable across file names, whitespace, time-zone notation and measurement corrections.
     public var id: String {

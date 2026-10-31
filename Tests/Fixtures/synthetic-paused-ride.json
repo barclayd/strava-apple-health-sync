@@ -1,0 +1,15 @@
+{
+  "id": 987654323,
+  "name": "Synthetic ride with a break",
+  "sport_type": "Ride",
+  "start_date": "2018-06-13T07:00:00Z",
+  "elapsed_time": 300,
+  "moving_time": 120,
+  "distance": 800,
+  "manual": false,
+  "calories": 20,
+  "total_elevation_gain": 8,
+  "trainer": false,
+  "device_watts": true,
+  "device_name": "Invented test fixture"
+}

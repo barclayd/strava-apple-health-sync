@@ -59,6 +59,11 @@ public struct StravaActivity: Decodable, Identifiable, Sendable {
         }
         result.indoor = trainer ?? (sportType == "VirtualRide" || sportType == "VirtualRun" ? true : nil)
         result.powerIsEstimated = deviceWatts != true
+        if streams.hasOriginalTiming {
+            result.pauses = StravaPauses.detect(in: points)
+            // An all-stationary or inconsistent recording must not become a zero-length workout.
+            if result.pausedDuration >= result.duration { result.pauses = [] }
+        }
         return result
     }
 }
@@ -81,16 +86,20 @@ public struct StravaStreams: Decodable, Sendable {
     let watts: Stream<Double>?
     let cadence: Stream<Double>?
     let velocitySmooth: Stream<Double>?
+    let moving: Stream<Bool>?
+    let distance: Stream<Double>?
     enum CodingKeys: String, CodingKey {
-        case time, latlng, altitude, heartrate, watts, cadence
+        case time, latlng, altitude, heartrate, watts, cadence, moving, distance
         case velocitySmooth = "velocity_smooth"
     }
 
-    public static var empty: Self { Self(time: nil, latlng: nil, altitude: nil, heartrate: nil, watts: nil, cadence: nil, velocitySmooth: nil) }
+    public static var empty: Self { Self(time: nil, latlng: nil, altitude: nil, heartrate: nil, watts: nil, cadence: nil, velocitySmooth: nil, moving: nil, distance: nil) }
+
+    var hasOriginalTiming: Bool { time.map { $0.originalSize == $0.data.count } ?? false }
 
     func points(start: Date, elapsed: Int) throws -> [TrackPoint] {
         guard let time else {
-            guard latlng == nil, altitude == nil, heartrate == nil, watts == nil, cadence == nil, velocitySmooth == nil else {
+            guard latlng == nil, altitude == nil, heartrate == nil, watts == nil, cadence == nil, velocitySmooth == nil, moving == nil, distance == nil else {
                 throw ImportProblem("Strava did not supply timestamps for the recorded samples.")
             }
             return []
@@ -107,7 +116,9 @@ public struct StravaStreams: Decodable, Sendable {
         }
         try aligned(latlng); try aligned(altitude); try aligned(heartrate)
         try aligned(watts); try aligned(cadence); try aligned(velocitySmooth)
+        try aligned(moving); try aligned(distance)
         var previous = -1.0
+        var previousDistance = -1.0
         return try time.data.enumerated().map { index, offset in
             guard offset.isFinite, offset >= 0, offset <= Double(elapsed), offset > previous else {
                 throw ImportProblem("Strava returned invalid or unordered sample timestamps.")
@@ -140,6 +151,12 @@ public struct StravaStreams: Decodable, Sendable {
             point.power = try measurement(watts, maximum: 10_000)
             point.cadence = try measurement(cadence, maximum: 400)
             point.speed = try measurement(velocitySmooth, maximum: 150)
+            point.moving = moving?.data[index]
+            point.cumulativeDistance = try measurement(distance, maximum: 10_000_000)
+            if let value = point.cumulativeDistance {
+                guard value >= previousDistance else { throw ImportProblem("Strava returned an unordered distance stream.") }
+                previousDistance = value
+            }
             return point
         }
     }

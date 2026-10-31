@@ -39,6 +39,9 @@ struct ImportView: View {
                     Button { model.loadCyclingExample() } label: {
                         Label("Preview a synthetic ride", systemImage: "bicycle")
                     }.accessibilityIdentifier("loadCyclingExample")
+                    Button { model.loadCyclingExample(withBreak: true) } label: {
+                        Label("Preview a ride with a break", systemImage: "pause.circle")
+                    }.accessibilityIdentifier("loadPausedExample")
                   }
                 } header: { Text("Other options") } footer: {
                     Text("This trial imports one Strava run or ride. Full-history sync will follow after checking the result in Health.")
@@ -132,6 +135,7 @@ struct ActivityView: View {
     @State private var reviewed = false
     @State private var confirm = false
     @State private var useCaloriesAsActive = false
+    @State private var usePauses = true
 
     private var alreadyImported: Bool { model.records.contains { $0.activityID == activity.id } }
 
@@ -146,7 +150,7 @@ struct ActivityView: View {
                     if let device = source.deviceName { LabeledContent("Recorded with", value: device) }
                     if !model.example { Link("View on Strava", destination: URL(string: "https://www.strava.com/activities/\(source.id)")!) }
                 }
-                LabeledContent(activity.stravaID == nil ? "Timer duration" : "Workout duration (elapsed)", value: duration(activity.duration))
+                LabeledContent(activity.stravaID == nil ? "Timer duration" : "Workout duration", value: duration(usePauses ? activity.workoutDuration : activity.duration))
                 LabeledContent("Elapsed time", value: duration(activity.end.timeIntervalSince(activity.start)))
                 LabeledContent("Distance", value: "\((activity.distance / 1000).formatted(.number.precision(.fractionLength(2)))) km")
                 LabeledContent("Heart-rate samples", value: "\(activity.heartRatePoints.count)")
@@ -165,7 +169,22 @@ struct ActivityView: View {
             } header: { Text(model.example ? "Synthetic activity" : "What will be imported") } footer: {
                 Text(activity.stravaID == nil
                     ? "Original timestamps and timer duration are preserved. Calories, cadence and power are not imported in this POC."
-                    : "This trial uses elapsed time for the Health workout; Strava moving time is shown separately. Available cycling streams are saved with their timestamps. Missing measurements are left absent. Estimated power is identified in sample metadata.")
+                    : "Original timestamps are preserved. Detected breaks can be excluded from workout duration using Health pause/resume events. Strava moving time is shown separately. Available cycling streams retain their timestamps; missing measurements stay absent.")
+            }
+            if !activity.pauses.isEmpty {
+                Section {
+                    Toggle("Treat detected breaks as pauses", isOn: $usePauses)
+                        .accessibilityIdentifier("useDetectedPauses")
+                    LabeledContent("Detected breaks", value: "\(activity.pauses.count)")
+                    LabeledContent("Time paused", value: duration(activity.pausedDuration))
+                    DisclosureGroup("Review break times") {
+                        ForEach(Array(activity.pauses.enumerated()), id: \.offset) { _, pause in
+                            LabeledContent("\(pause.start.formatted(date: .omitted, time: .standard)) – \(pause.end.formatted(date: .omitted, time: .standard))", value: duration(pause.duration))
+                        }
+                    }
+                } footer: {
+                    Text("Break timing is estimated from Strava’s movement samples and stationary recording gaps. It may differ from Garmin’s original timer. Health receives pause/resume events; Fitness controls how its graphs display them. Turn this off to keep the full elapsed duration.")
+                }
             }
             if activity.stravaCalories != nil {
                 Section {
@@ -206,6 +225,7 @@ struct ActivityView: View {
             Button("Save to Health") {
                 var selected = activity
                 selected.activeEnergy = useCaloriesAsActive ? activity.stravaCalories : nil
+                if !usePauses { selected.pauses = [] }
                 Task { await model.importActivity(selected) }
             }
         } message: { Text("Nothing is uploaded by Health Import. Your Apple Health iCloud settings still apply.") }

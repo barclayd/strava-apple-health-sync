@@ -74,11 +74,12 @@ import ActivityImportCore
         example = true
     }
 
-    func loadCyclingExample() {
+    func loadCyclingExample(withBreak: Bool = false) {
         guard !busy else { return }
         do {
-            guard let detailURL = Bundle.main.url(forResource: "synthetic-ride", withExtension: "json"),
-                  let streamsURL = Bundle.main.url(forResource: "synthetic-ride-streams", withExtension: "json") else { return }
+            let name = withBreak ? "synthetic-paused-ride" : "synthetic-ride"
+            guard let detailURL = Bundle.main.url(forResource: name, withExtension: "json"),
+                  let streamsURL = Bundle.main.url(forResource: name + "-streams", withExtension: "json") else { return }
             let source = try StravaJSON.decode(StravaActivity.self, from: Data(contentsOf: detailURL))
             let streams = try StravaJSON.decode(StravaStreams.self, from: Data(contentsOf: streamsURL))
             activities = [try source.activity(streams: streams)]

@@ -64,13 +64,40 @@ import ActivityImportCore
     }
 
     func save(_ activity: Activity, record: ImportRecord) async throws {
+        var activeIntervals: [DateInterval] = []
+        var cursor = activity.start
+        for pause in activity.pauses {
+            guard activity.stravaID != nil, pause.start >= cursor, pause.end <= activity.end, pause.duration > 0 else {
+                throw ImportProblem("The detected breaks are invalid. Nothing has been imported.")
+            }
+            if pause.start > cursor { activeIntervals.append(DateInterval(start: cursor, end: pause.start)) }
+            cursor = pause.end
+        }
+        if cursor < activity.end { activeIntervals.append(DateInterval(start: cursor, end: activity.end)) }
+        guard !activeIntervals.isEmpty else { throw ImportProblem("The activity has no unpaused time.") }
         func metadata(_ suffix: String) -> [String: Any] {
             [Self.batchKey: record.id.uuidString, Self.activityKey: activity.id,
              HKMetadataKeySyncIdentifier: "healthimport.\(activity.id).\(suffix)", HKMetadataKeySyncVersion: 1]
         }
-        var measurements: [HKSample] = [HKQuantitySample(type: distanceType(activity.sport),
-            quantity: HKQuantity(unit: .meter(), doubleValue: activity.distance), start: activity.start,
-            end: activity.end, metadata: metadata("distance"))]
+        // HealthKit prorates cumulative samples that overlap a pause. Apportion summary totals
+        // across the active intervals so it does not discard distance/energy during a break.
+        // Their temporal distribution is an estimate, not a recorded measurement stream.
+        func summarySamples(type: HKQuantityType, unit: HKUnit, total: Double, suffix: String,
+                            extraMetadata: [String: Any] = [:]) -> [HKSample] {
+            let seconds = activeIntervals.reduce(0) { $0 + $1.duration }
+            var assigned = 0.0
+            return activeIntervals.enumerated().map { index, interval in
+                let value = index == activeIntervals.count - 1 ? total - assigned : total * interval.duration / seconds
+                assigned += value
+                var values = metadata("\(suffix).\(index)").merging(extraMetadata) { _, new in new }
+                if !activity.pauses.isEmpty {
+                    values["com.barclayd.healthimport.summaryDistribution"] = "Activity total apportioned by unpaused duration; timing estimated"
+                }
+                return HKQuantitySample(type: type, quantity: HKQuantity(unit: unit, doubleValue: value),
+                                        start: interval.start, end: interval.end, metadata: values)
+            }
+        }
+        var measurements = summarySamples(type: distanceType(activity.sport), unit: .meter(), total: activity.distance, suffix: "distance")
         for (index, point) in activity.heartRatePoints.enumerated() {
             measurements.append(HKQuantitySample(type: heartType,
                 quantity: HKQuantity(unit: .count().unitDivided(by: .minute()), doubleValue: point.heartRate!),
@@ -78,10 +105,8 @@ import ActivityImportCore
         }
         if let calories = activity.activeEnergy {
             guard calories.isFinite, calories > 0, calories <= 100_000 else { throw ImportProblem("Invalid active energy.") }
-            var energyMetadata = metadata("energy")
-            energyMetadata["com.barclayd.healthimport.energyInterpretation"] = "Strava calories, confirmed as active energy by user"
-            measurements.append(HKQuantitySample(type: energyType, quantity: HKQuantity(unit: .kilocalorie(), doubleValue: calories),
-                start: activity.start, end: activity.end, metadata: energyMetadata))
+            measurements += summarySamples(type: energyType, unit: .kilocalorie(), total: calories, suffix: "energy",
+                extraMetadata: ["com.barclayd.healthimport.energyInterpretation": "Strava calories, confirmed as active energy by user"])
         }
         if activity.sport == .cycling {
             let speedUnit = HKUnit.meter().unitDivided(by: .second())
@@ -106,8 +131,8 @@ import ActivityImportCore
         if let elevation = activity.elevationGain { workoutMetadata[HKMetadataKeyElevationAscended] = HKQuantity(unit: .meter(), doubleValue: elevation) }
         let workout: HKWorkout
         if activity.stravaID != nil {
-            // Strava elapsed duration matches the collected interval. A builder also produces native
-            // workout statistics for energy, power, cadence and speed from the imported samples.
+            // Preserve real timestamps and represent detected breaks using native pause/resume
+            // events. The builder subtracts those intervals from the workout duration.
             let configuration = HKWorkoutConfiguration()
             configuration.activityType = activity.sport == .cycling ? .cycling : .running
             configuration.locationType = activity.indoor == true ? .indoor : activity.indoor == false || !activity.routePoints.isEmpty ? .outdoor : .unknown
@@ -115,6 +140,16 @@ import ActivityImportCore
             do {
                 try await builder.beginCollection(at: activity.start)
                 try await builder.addMetadata(workoutMetadata)
+                if !activity.pauses.isEmpty {
+                    let events = activity.pauses.flatMap { pause in
+                        let provenance = ["com.barclayd.healthimport.pauseSource": "Estimated from Strava movement samples and stationary recording gaps"]
+                        return [HKWorkoutEvent(type: .pause, dateInterval: DateInterval(start: pause.start, duration: 0), metadata: provenance),
+                                HKWorkoutEvent(type: .resume, dateInterval: DateInterval(start: pause.end, duration: 0), metadata: provenance)]
+                    }
+                    for offset in stride(from: 0, to: events.count, by: 500) {
+                        try await builder.addWorkoutEvents(Array(events[offset..<min(offset + 500, events.count)]))
+                    }
+                }
                 for offset in stride(from: 0, to: measurements.count, by: 500) {
                     try await builder.addSamples(Array(measurements[offset..<min(offset + 500, measurements.count)]))
                 }
