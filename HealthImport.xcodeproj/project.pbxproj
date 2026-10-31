@@ -29,6 +29,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0DB5E049828934ED4967CA1C /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		38A6B9872F67B36ADA6CDBE5 /* HealthWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthWriterTests.swift; sourceTree = "<group>"; };
 		53388221123F5BAFE6CFB7B0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5F4AC1A172C36908505AEA56 /* HealthWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthWriter.swift; sourceTree = "<group>"; };
@@ -84,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				826B216130501CD61D16320F /* App */,
+				D8CC1889709AB9B3B8478E5D /* Config */,
 				3794E774E6D99E0F3E8926C6 /* Fixtures */,
 				0F1AE64436708D5BC81CABD7 /* HealthKitTests */,
 				802EF7D29DA3B9EE529D996B /* Packages */,
@@ -111,6 +113,14 @@
 				C33EF699E4B7D5C206BF99A0 /* PrivacyInfo.xcprivacy */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		D8CC1889709AB9B3B8478E5D /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				0DB5E049828934ED4967CA1C /* Signing.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		DD7F97F64A93C2B5D28743F2 /* Products */ = {
@@ -320,6 +330,7 @@
 		};
 		C3F38EFC7A75A96B33E49480 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0DB5E049828934ED4967CA1C /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -353,7 +364,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -379,6 +390,7 @@
 		};
 		FCBBBE1B1CBB4E580344F78B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 0DB5E049828934ED4967CA1C /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -412,7 +424,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
