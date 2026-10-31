@@ -4,6 +4,7 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
+Config/LocalSigning.xcconfig
 *.xcarchive
 *.ipa
 # Never commit personal exports. Synthetic fixtures live under Tests/Fixtures.

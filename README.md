@@ -33,7 +33,9 @@ Limits:
 
 ## Run
 
-Open `HealthImport.xcodeproj` in Xcode 16 or later (Swift 6). The deployment target is iOS 17. Select the `HealthImport` scheme and an iPhone simulator, or select your own development team and a physical device. HealthKit capability must be available to that team and provisioning profile.
+Open `HealthImport.xcodeproj` in Xcode 16 or later (Swift 6). The deployment target is iOS 17. Select the `HealthImport` scheme and an iPhone simulator.
+
+For a physical device, copy `Config/LocalSigning.xcconfig.example` to `Config/LocalSigning.xcconfig` and set your development team ID. The local file is ignored by Git and supplies signing for the app and test target. Sign into Xcode's Apple Accounts settings, select your iPhone as the run destination and run. HealthKit must be enabled in the app's explicit provisioning profile; a wildcard profile cannot sign it. If command-line automatic provisioning reports no accounts despite an existing Xcode account, select the team once in Xcode's Signing & Capabilities editor to let Xcode create the profile.
 
 The Xcode project is checked in. `project.yml` is its XcodeGen source; after changing project configuration, run `xcodegen generate` and commit the generated project too.
 
@@ -51,7 +53,7 @@ xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \
   -parallel-testing-enabled NO test
 ```
 
-There is no signing team, App Store Connect app record or TestFlight delivery workflow configured in this repository. A simulator build is not an installable beta.
+Signing-team settings are machine-local. There is no App Store Connect app record or TestFlight delivery workflow configured in this repository. A local development installation and a simulator build are separate from a TestFlight beta.
 
 Keep default ad-hoc signing enabled when running or testing in a simulator; `CODE_SIGNING_ALLOWED=NO` above is only a compilation check and does not embed the simulated HealthKit entitlement.
 
