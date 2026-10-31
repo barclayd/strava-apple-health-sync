@@ -264,6 +264,7 @@ struct ImportView: View {
         VStack(spacing: 10) {
             if connected {
                 let count = library.pending(records: model.records).count
+                let disabled = library.loading || (!library.running && (model.busy || (count == 0 && !library.hasPending) || model.journalError != nil || needsCleanup)) || library.pauseRequested && library.running
                 Button {
                     if library.running { library.pause() }
                     else { Task { await library.run(strava: strava, model: model) } }
@@ -278,8 +279,8 @@ struct ImportView: View {
                             : library.finished ? "Up to date" : "Import to Apple Health")
                     }.font(.headline).frame(maxWidth: .infinity).padding(.vertical, 10)
                 }
-                .buttonStyle(.borderedProminent).tint(ImportTheme.accent).foregroundStyle(Color(uiColor: .systemBackground))
-                .disabled(library.loading || (!library.running && (model.busy || (count == 0 && !library.hasPending) || model.journalError != nil || needsCleanup)) || library.pauseRequested && library.running)
+                .buttonStyle(ImportButtonStyle())
+                .disabled(disabled)
                 .accessibilityIdentifier("importSelection")
                 Text(library.running ? "Keep the app open while importing" : "Saved directly to Apple Health")
                     .font(.caption).foregroundStyle(.secondary)
@@ -370,5 +371,17 @@ private struct PrivacyView: View {
             }.navigationTitle("Privacy").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
+    }
+}
+
+private struct ImportButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .foregroundStyle(enabled ? Color(uiColor: .systemBackground) : Color.secondary)
+            .background(enabled ? ImportTheme.accent : Color(uiColor: .quaternarySystemFill), in: Capsule())
+            .opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
