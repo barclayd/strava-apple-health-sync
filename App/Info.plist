@@ -12,9 +12,14 @@
     <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
     <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
     <key>NSHealthShareUsageDescription</key><string>Check existing workouts on this device to help avoid importing the same activity twice. Your Health data is never uploaded by this app.</string>
-    <key>NSHealthUpdateUsageDescription</key><string>Save only the workouts, distance, heart rate and routes you choose to Apple Health. You can undo imports made by this app.</string>
+    <key>NSHealthUpdateUsageDescription</key><string>Save the workouts and available distance, heart rate, routes, cycling measurements and active energy you confirm. You can undo imports made by this app.</string>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
     <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+    <key>LSApplicationQueriesSchemes</key><array><string>strava</string></array>
+    <key>CFBundleURLTypes</key><array><dict>
+        <key>CFBundleURLName</key><string>com.barclayd.healthimport.strava</string>
+        <key>CFBundleURLSchemes</key><array><string>healthimport-strava</string></array>
+    </dict></array>
     <key>CFBundleDocumentTypes</key><array><dict>
         <key>CFBundleTypeName</key><string>TCX activity</string>
         <key>LSHandlerRank</key><string>Alternate</string>

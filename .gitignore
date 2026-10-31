@@ -5,6 +5,7 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 Config/LocalSigning.xcconfig
+Config/LocalStrava.plist
 *.xcarchive
 *.ipa
 # Never commit personal exports. Synthetic fixtures live under Tests/Fixtures.

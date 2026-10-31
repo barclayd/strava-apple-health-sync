@@ -13,15 +13,29 @@ settings:
   base:
     SWIFT_VERSION: '6.0'
     MARKETING_VERSION: '0.1.0'
-    CURRENT_PROJECT_VERSION: '2'
+    CURRENT_PROJECT_VERSION: '5'
     CODE_SIGN_STYLE: Automatic
 targets:
   HealthImport:
     type: application
     platform: iOS
+    postBuildScripts:
+      - name: Local Strava development configuration
+        basedOnDependencyAnalysis: false
+        script: |
+          target="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/LocalStrava.plist"
+          if [ "$CONFIGURATION" = Debug ] && [ -f "$SRCROOT/Config/LocalStrava.plist" ]; then
+            cp "$SRCROOT/Config/LocalStrava.plist" "$target"
+          else
+            rm -f "$target"
+          fi
     sources:
       - path: App
       - path: Tests/Fixtures/historic-run.tcx
+        buildPhase: resources
+      - path: Tests/Fixtures/synthetic-ride.json
+        buildPhase: resources
+      - path: Tests/Fixtures/synthetic-ride-streams.json
         buildPhase: resources
     dependencies:
       - package: ActivityImportCore

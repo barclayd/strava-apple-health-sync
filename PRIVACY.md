@@ -1,10 +1,18 @@
 # Privacy
 
-Health Import processes selected activity files on your iPhone or iPad and writes the records you confirm to Apple Health. It does not upload activities or Health data to the developer or any other server.
+Health Import reads activities directly from Strava (or from TCX files you choose), processes them on your iPhone or iPad, and writes only the records you confirm to Apple Health. It does not upload activities or Health data to the developer or any other server.
 
 ## No data collection
 
-The app has no account system, backend, analytics, advertising or crash-reporting SDK. It contains no networking code or third-party dependencies. No activity content, filenames, coordinates or Health query results are logged by the app. Apple's own system diagnostics are controlled by your device settings.
+The app has no separate account system, backend, analytics, advertising, crash-reporting SDK or third-party dependencies. Network requests go directly to Strava for authorisation, token exchange/refresh and activity reads. No activity content, filenames, coordinates or Health query results are logged by the app. Apple's own system diagnostics are controlled by your device settings.
+
+## Strava connection
+
+You authorise activity read access through Strava, including private activities. The app lists the day you select and loads the workout, calories, elevation, heart rate, route and cycling power/cadence/speed you choose to review. Responses are held in memory; the ephemeral network session has no disk cache or cookies. Requests contain credentials and the identifiers/date filters needed by Strava, never Apple Health data. Strava may collect information about API usage under its own policy.
+
+Access and refresh tokens are kept in this device’s Keychain, available while unlocked, with syncing and device migration disabled. The personal Debug build also contains an ignored local developer configuration for direct OAuth. That bundle must not be distributed; Release builds exclude the configuration and disable this trial connection.
+
+**Forget connection on this device** removes the tokens and Strava preview from this app. It does not revoke the shared Strava developer app grant used by Stitch. You can revoke that grant in Strava’s connected-app settings, which also affects other uses of the same developer app. Imported Health records stay under your control; use the app’s import history to undo them before uninstalling. Keychain entries can survive uninstalling, so forget the connection first.
 
 ## Files and local history
 
@@ -14,9 +22,13 @@ The app stores only the activity identifier, sport, start date, transaction iden
 
 Clearing the preview releases the parsed activities. Undo removes a selected import's Health records and local journal entry. Uninstalling removes the local journal but does not remove already imported Health records. Undo unwanted imports before uninstalling.
 
+## Local development diagnostics
+
+Debug builds keep up to 200 fixed diagnostic events from the current app session in a protected local cache file, excluded from backups. It contains timestamps, operation stages and HTTP/error status numbers only, with no tokens, URLs, activity identifiers, names, route or Health measurements. An authorised developer can retrieve this file through Xcode’s device tools to diagnose the trial. It is replaced on the next launch and may be removed by iOS. Release builds do not write it. No log is sent to a server by the app.
+
 ## Health permissions
 
-The app requests workout read access to detect potential duplicates. It requests write access only for the workout and the distance, heart rate and route present in the activity being imported. Permissions can be changed in Settings.
+The app requests workout read access to detect potential duplicates. It requests write access only for the workout and the distance, heart rate, route and cycling measurements present in the activity being imported. Active energy is requested only when you explicitly choose to interpret the supplied Strava calorie value as active energy; the API does not provide an active/resting split. Permissions can be changed in Settings.
 
 An empty Health query does not prove there is no existing workout. Denied or limited read permission can hide history. The app explains this and requires a review confirmation before importing.
 

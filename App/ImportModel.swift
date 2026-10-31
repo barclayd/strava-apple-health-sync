@@ -8,6 +8,8 @@ import ActivityImportCore
     var busy = false
     var message: String?
     var example = false
+    var stravaSource: StravaActivity?
+    var stravaTrialComplete: Bool { records.contains { $0.completed && $0.activityID.hasPrefix("strava-v1-") } }
     var journalError: String?
     private var journal: ImportJournal?
     private let health = HealthWriter()
@@ -61,6 +63,7 @@ import ActivityImportCore
             }.value
             activities = parsed
             example = false
+            stravaSource = nil
         } catch { message = error.localizedDescription }
     }
 
@@ -71,38 +74,60 @@ import ActivityImportCore
         example = true
     }
 
+    func loadCyclingExample() {
+        guard !busy else { return }
+        do {
+            guard let detailURL = Bundle.main.url(forResource: "synthetic-ride", withExtension: "json"),
+                  let streamsURL = Bundle.main.url(forResource: "synthetic-ride-streams", withExtension: "json") else { return }
+            let source = try StravaJSON.decode(StravaActivity.self, from: Data(contentsOf: detailURL))
+            let streams = try StravaJSON.decode(StravaStreams.self, from: Data(contentsOf: streamsURL))
+            activities = [try source.activity(streams: streams)]
+            stravaSource = source; example = true
+        } catch { message = error.localizedDescription }
+    }
+
     func importActivity(_ activity: Activity) async {
         guard !busy, let journal, !example || canImportExample else { return }
         busy = true
         defer { busy = false; records = journal.records }
         do {
+            guard activity.stravaID == nil || !stravaTrialComplete else {
+                throw ImportProblem("Your trial workout is already imported. Check it in Apple Health before we enable full-history sync. You can undo it below.")
+            }
             guard !journal.records.contains(where: { $0.activityID == activity.id }) else {
                 throw ImportProblem("This activity is already in your import history. Undo that import before trying again.")
             }
             guard !journal.records.contains(where: { !$0.completed }) else {
                 throw ImportProblem("An earlier import was interrupted. Use Undo in import history to clean it up first.")
             }
+            await AppDiagnostics.shared.record(.healthPermissionRequested)
             try await health.authorise(for: activity)
+            await AppDiagnostics.shared.record(.healthPermissionGranted)
             guard try await !health.hasDuplicate(activity) else {
+                await AppDiagnostics.shared.record(.duplicateBlocked)
                 throw ImportProblem("A matching or overlapping workout is already visible in Apple Health. Nothing was imported.")
             }
             let record = ImportRecord(activity: activity)
             try journal.append(record)
             do {
+                await AppDiagnostics.shared.record(.healthWriteStarted)
                 try await health.save(activity, record: record)
                 try journal.complete(record.id)
+                await AppDiagnostics.shared.record(.healthWriteCompleted)
                 message = "Imported into Apple Health. You can undo this import from the history below."
             } catch {
                 let original = error
                 do {
                     try await health.undo(record)
                     try journal.remove(record.id)
+                    await AppDiagnostics.shared.record(.rollbackCompleted)
                 } catch {
+                    await AppDiagnostics.shared.record(.rollbackFailed)
                     throw ImportProblem("Import was interrupted and cleanup could not finish. Keep this app installed and use Undo in import history to retry cleanup.")
                 }
                 throw ImportProblem("Import failed and its saved data was removed: \(original.localizedDescription)")
             }
-        } catch { message = error.localizedDescription }
+        } catch { await AppDiagnostics.shared.record(.importFailed); message = error.localizedDescription }
     }
 
     func undo(_ record: ImportRecord) async {

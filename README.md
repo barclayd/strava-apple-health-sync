@@ -1,19 +1,24 @@
 # Health Import
 
-A native Swift / SwiftUI proof of concept for importing historic Strava activity exports into Apple Health. Everything the app does with your activities happens on your device.
+A native Swift / SwiftUI proof of concept for importing Strava workouts into Apple Health. The current trial connects directly to Strava, lists a selected day (yesterday by default), and imports one reviewed run or ride. TCX exports remain an optional fallback.
 
-**No account, backend, analytics, advertising, crash-reporting service or networking code.** No third-party dependencies. Export files are read in memory, not copied into the app. A small, protected local journal supports duplicate protection, interrupted-import recovery and undo; it is excluded from device backups.
+**No app backend, analytics, advertising, crash-reporting service or third-party dependencies.** Authentication and activity requests go directly from the iPhone to Strava. Previews are held in memory without a disk cache. A small, protected local journal supports duplicate protection, interrupted-import recovery and undo; it is excluded from device backups.
 
 Apple Health can sync through iCloud when the user enables it. Files selected from a cloud provider may be downloaded by that provider. The promise is **“this app never uploads your activities”**, not a promise about Apple's services or other apps. See [PRIVACY.md](PRIVACY.md).
 
 ## First milestone
 
-Import one years-old workout, repeat without creating another copy, then undo it. This is a POC, not a complete archive migration tool or an available App Store release.
+Connect Strava, review yesterday’s workout, save it to Health, then check the result. A completed Strava import blocks further Strava imports until it is undone. Full-history sync comes after this acceptance check. This is a POC, not a complete archive migration tool or an available App Store release.
 
 Currently supported:
 
+* Native Strava sign-in, with a system browser fallback and validated OAuth state/callback/scope
+* Direct activity reads with `activity:read_all`, Keychain token storage and coordinated token refresh
+* A one-day activity list with pagination, local-calendar date boundaries and individual preview
 * Individual UTF-8 TCX activity files containing runs or rides
-* Original timestamps, timer duration, distance, recorded heart-rate samples and GPS route
+* Original timestamps, distance, recorded heart-rate samples and GPS route; TCX timer duration or Strava elapsed duration
+* Cycling power (with an estimated-power marker when applicable), cadence, speed, elevation gain and indoor/outdoor status from Strava
+* Strava calories shown in preview, with an explicit choice to interpret them as active energy
 * A review screen and explicit user confirmation before any Health write
 * Stable per-activity identifiers, a persistent import journal and conservative matching against visible Health workouts
 * Undo for this app's workout, route and associated samples, including interrupted imports
@@ -22,9 +27,12 @@ Currently supported:
 Limits:
 
 * Up to 20 files, 20 MB combined, 100 activities and 100,000 track points per selection; each activity is confirmed individually
-* FIT, GPX, ZIP archives, other sports, ongoing Strava sync and edited-workout reconciliation are not implemented
-* Calories, cadence and power are not imported; TCX does not distinguish active from total calories
-* No fabricated sensor readings, pause events, calories, location accuracy or missing data
+* FIT, GPX, ZIP archives, sports other than runs/rides, full-history/ongoing sync and edited-workout reconciliation are not implemented
+* Strava does not provide the original recording timer or pause timeline. Its elapsed time is used as the Health workout duration; moving time is shown separately and never presented as timer duration
+* Missing streams produce a summary-only preview. No heart-rate or route samples are invented
+* TCX calories, cadence and power remain unsupported. Strava’s calorie value has no active/resting split: active energy is written only when the user enables that interpretation. No resting calories are fabricated
+* Only available cycling streams become Health samples. Summary-only power/cadence averages are not expanded into invented time series. Device/Strava estimates retain their source limitations
+* No fabricated sensor readings, pause events, calorie totals, location accuracy or missing data
 * Ambiguous duplicates are blocked, with no override in this first POC
 * Read permission can be denied or limited without a distinguishable empty-result error. Users must allow full workout history and review the date in Health. Cross-app duplicate prevention cannot be guaranteed when Health hides data
 * When compiled with Xcode 27.1 / Swift 6.4 or later, the app also checks iOS 27's earliest-authorised-date API and blocks imports outside a known limited history window. Older toolchains retain the explicit user review safeguard
@@ -37,6 +45,36 @@ Open `HealthImport.xcodeproj` in Xcode 16 or later (Swift 6). The deployment tar
 
 For a physical device, copy `Config/LocalSigning.xcconfig.example` to `Config/LocalSigning.xcconfig` and set your development team ID. The local file is ignored by Git and supplies signing for the app and test target. Sign into Xcode's Apple Accounts settings, select your iPhone as the run destination and run. HealthKit must be enabled in the app's explicit provisioning profile; a wildcard profile cannot sign it. If command-line automatic provisioning reports no accounts despite an existing Xcode account, select the team once in Xcode's Signing & Capabilities editor to let Xcode create the profile.
 
+### Local Strava setup
+
+Copy `Config/LocalStrava.plist.example` to `Config/LocalStrava.plist`, fill in the existing developer app’s client ID, secret and callback hostname, and restrict the file to your user (`chmod 600 Config/LocalStrava.plist`). The file is ignored by Git. No user access/refresh tokens should be copied from another app.
+
+The local Debug build copies this configuration into its bundle; Release builds remove it and do not enable Strava. This is a personal development setup: an embedded client secret is recoverable from the bundle, so do not distribute this Debug app or publish its build artifacts. Production OAuth needs a separately reviewed credential strategy.
+
+The redirect is `healthimport-strava://YOUR_CALLBACK_HOST/oauth/callback`. It uses the existing allowed hostname with an app-specific scheme; the callback is handled on the iPhone and does not visit that website. There is no relay, server, webhook or change to Stitch’s callback domain. OAuth asks only for activity read access. The shared developer app name will appear in Strava’s consent screen. Shared app quotas and grants still apply; do not revoke that grant to sign out of this trial. **Forget connection on this device** deletes only this app’s tokens and preview.
+
+### Try yesterday’s activity
+
+1. Tap **Connect with Strava** and approve the activity read permission
+2. Choose yesterday’s activity (or adjust the trial date and tap **Find activities**)
+3. Review the timestamp, distance, elapsed versus moving time, cycling sample counts and elevation. Enable **Use Strava calories as active energy** only if that interpretation matches the recording
+4. Check the date in Apple Health, then confirm **Save to Health** and grant the requested Health access
+5. Check the workout in Health/Fitness, including its source and available heart rate/route. The trial blocks a second Strava import
+6. Use **Undo import** if needed. Full-history sync stays disabled until this trial is accepted
+
+### Device diagnostics
+
+Debug builds keep the last 200 diagnostic events from the current app session in `Library/Caches/health-import-diagnostics.log`, protected while the phone is locked and excluded from backups. The log contains fixed event names, timestamps and HTTP/error status numbers only. No response bodies, URLs, tokens, activity identifiers, names, coordinates or Health measurements are logged. Release builds write no diagnostic file.
+
+Read the log from an authorised connected phone without restarting the app:
+
+```sh
+xcrun devicectl device copy from --device YOUR_DEVICE_ID \
+  --domain-type appDataContainer --domain-identifier com.barclayd.healthimport \
+  --source Library/Caches/health-import-diagnostics.log \
+  --destination /tmp/health-import-diagnostics.log
+```
+
 The Xcode project is checked in. `project.yml` is its XcodeGen source; after changing project configuration, run `xcodegen generate` and commit the generated project too.
 
 ```sh
@@ -45,7 +83,7 @@ xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-For the HealthKit integration test, first import the synthetic example in a dedicated simulator and grant Health access. The test checks saved values, duplicate matching, route/sample counts and scoped undo. It skips on physical devices and simulators without write permission. Use that simulator's ID:
+For the HealthKit integration tests, first import both synthetic examples in a dedicated simulator and grant Health access, enabling active energy for the synthetic ride. Tests check saved values, cycling statistics, duplicate matching, route/sample counts and scoped undo. They skip on physical devices and simulators without write permission. Use that simulator's ID:
 
 ```sh
 xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \
@@ -70,17 +108,23 @@ The TCX export endpoint may be unavailable for activities without GPS; use origi
 
 ## Design
 
-`ActivityImportCore` contains the bounded XML parser, stable identity, duplicate matching and durable import journal. It is a local Swift package with no dependencies and can be tested on macOS without HealthKit.
+`ActivityImportCore` contains the bounded XML parser, Strava API client and mapping, OAuth validation, stable identity, duplicate matching and durable import journal. It is a local Swift package with no dependencies and can be tested on macOS without HealthKit. API tests use synthetic responses and never call Strava.
+
+API requests use an ephemeral session with no cookies or disk cache, reject redirects, time out, and cap response bodies at 20 MB. Strava IDs are the stable identity for API imports; conservative date/sport matching also catches visible workouts imported by other routes. Tokens are stored as one Keychain item with `WhenUnlockedThisDeviceOnly`; refreshed credentials are saved before subsequent activity requests. Rate limiting fails visibly without a retry loop.
 
 `App` contains the SwiftUI interface and the HealthKit writer. All import operations are serialised by the model. A journal entry is persisted before writing to Health, and every sample carries an app-specific transaction marker. On failure, cleanup targets that marker and the app's own Health source. An interrupted entry remains available for retrying cleanup. New imports are blocked while cleanup is pending.
 
-The writer intentionally uses HealthKit's deprecated but available explicit-duration workout initializer and sample association API. TCX exports supply timer duration and an elapsed interval without an exact pause timeline. This preserves both without inventing pause events. A future `HKWorkoutBuilder` migration must retain this distinction; subtracting pauses from the end timestamp would corrupt chronology. Xcode currently reports the two expected deprecation warnings.
+Strava imports use `HKWorkoutBuilder` to produce native cycling statistics from timestamped samples. The Strava elapsed interval is preserved. Energy is one source-total sample, not an invented calorie curve. Zero power/cadence/speed samples are retained; zero heart rate is treated as missing. All samples and the workout carry the same undo transaction marker.
+
+TCX imports retain HealthKit's deprecated explicit-duration initializer and sample association API because TCX supplies timer duration and an elapsed interval without an exact pause timeline. This preserves both without inventing pauses. Subtracting pauses from the end timestamp would corrupt chronology. Xcode reports the two expected deprecation warnings for that fallback.
 
 The parser rejects malformed XML, DTDs/entities, unsupported sports, non-finite measurements, invalid coordinates, unordered track timestamps, overlapping laps, inconsistent dates and oversized input. It never resolves external entities. The test fixture is entirely invented, not a user's export.
 
 ## References
 
 * [Strava's export instructions](https://support.strava.com/en-us/articles/15401919-how-do-i-export-my-strava-data)
+* [Strava authentication](https://developers.strava.com/docs/authentication/)
+* [Strava API reference](https://developers.strava.com/docs/reference/)
 * [HealthKit permissions and limited history](https://developer.apple.com/documentation/healthkit/authorizing-access-to-health-data)
 * [HealthKit sync identifiers](https://developer.apple.com/documentation/healthkit/hkmetadatakeysyncidentifier)
 * [Manage Apple Health data and iCloud settings](https://support.apple.com/en-us/108779)

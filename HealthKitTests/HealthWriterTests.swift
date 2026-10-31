@@ -4,6 +4,45 @@ import ActivityImportCore
 @testable import HealthImport
 
 final class HealthWriterTests: XCTestCase {
+    @MainActor func testCyclingStatisticsAndScopedUndo() async throws {
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Synthetic write tests must only run in a simulator.")
+        #else
+        let store = HKHealthStore()
+        let types: [HKSampleType] = [HKObjectType.workoutType(), HKQuantityType(.distanceCycling),
+            HKQuantityType(.activeEnergyBurned), HKQuantityType(.cyclingPower), HKQuantityType(.cyclingCadence),
+            HKQuantityType(.cyclingSpeed), HKQuantityType(.heartRate), HKSeriesType.workoutRoute()]
+        try XCTSkipUnless(types.allSatisfy { store.authorizationStatus(for: $0) == .sharingAuthorized },
+            "First import the synthetic ride with active energy enabled in this simulator.")
+        let detailURL = try XCTUnwrap(Bundle.main.url(forResource: "synthetic-ride", withExtension: "json"))
+        let streamsURL = try XCTUnwrap(Bundle.main.url(forResource: "synthetic-ride-streams", withExtension: "json"))
+        let detail = try String(contentsOf: detailURL, encoding: .utf8).replacingOccurrences(of: "2018-", with: "2015-")
+        let source = try StravaJSON.decode(StravaActivity.self, from: Data(detail.utf8))
+        let streams = try StravaJSON.decode(StravaStreams.self, from: Data(contentsOf: streamsURL))
+        var activity = try source.activity(streams: streams)
+        activity.activeEnergy = activity.stravaCalories
+        activity.stravaID = 987654322
+        let record = ImportRecord(activity: activity)
+        let writer = HealthWriter()
+        do {
+            try await writer.save(activity, record: record)
+            let saved = try await query(store, HKObjectType.workoutType(), record)
+            let workout = try XCTUnwrap(saved.first as? HKWorkout)
+            XCTAssertEqual(workout.duration, 120, accuracy: 0.01)
+            XCTAssertEqual(workout.workoutActivityType, .cycling)
+            XCTAssertEqual(workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie()), 20)
+            XCTAssertEqual(workout.statistics(for: HKQuantityType(.cyclingPower))?.maximumQuantity()?.doubleValue(for: .watt()), 200)
+            XCTAssertEqual((workout.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter()), 8)
+            for type in [HKQuantityType(.cyclingPower), HKQuantityType(.cyclingCadence), HKQuantityType(.cyclingSpeed)] {
+                let samples = try await query(store, type, record)
+                XCTAssertEqual(samples.count, 4)
+            }
+            try await writer.undo(record)
+            for type in types { let remaining = try await query(store, type, record); XCTAssertTrue(remaining.isEmpty) }
+        } catch { try? await writer.undo(record); throw error }
+        #endif
+    }
+
     @MainActor func testHistoricImportDuplicateAndScopedUndo() async throws {
         #if !targetEnvironment(simulator)
         throw XCTSkip("Synthetic write tests must only run in a simulator.")
