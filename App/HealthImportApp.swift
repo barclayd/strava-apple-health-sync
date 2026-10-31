@@ -7,13 +7,12 @@ import SwiftUI
     var body: some Scene {
         WindowGroup {
             ImportView(model: model, strava: strava)
-                .tint(.indigo)
-                .task { await strava.restore() }
+                .tint(ImportTheme.accent)
+                .task { if !ActivityLibrary.preview { await strava.restore() } }
                 .onOpenURL { url in
                     Task {
                         guard !model.historyRunning else { return }
                         if url.scheme == "healthimport-strava" { await strava.callback(url) }
-                        else if url.isFileURL && !strava.busy { await model.load([url]) }
                     }
                 }
         }

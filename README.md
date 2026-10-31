@@ -1,48 +1,46 @@
 # Health Import
 
-A native Swift / SwiftUI proof of concept for importing Strava workouts into Apple Health. Connect directly to Strava, review one day or your full activity history, then import runs and rides. TCX exports remain an optional fallback.
+A native Swift / SwiftUI proof of concept for importing Strava workouts into Apple Health. Connect directly to Strava, choose all history, individual rides or a date range, then import into Health with one button.
 
 **No app backend, analytics, advertising, crash-reporting service or third-party dependencies.** Authentication and activity requests go directly from the iPhone to Strava. Previews are held in memory without a disk cache. A small, protected local journal supports duplicate protection, interrupted-import recovery and undo; it is excluded from device backups.
 
-Apple Health can sync through iCloud when the user enables it. Files selected from a cloud provider may be downloaded by that provider. The promise is **“this app never uploads your activities”**, not a promise about Apple's services or other apps. See [PRIVACY.md](PRIVACY.md).
+Apple Health can sync through iCloud when the user enables it. The promise is **“this app never uploads your activities”**, not a promise about Apple's services or other apps. See [PRIVACY.md](PRIVACY.md).
 
 ## Current POC
 
-The individual cycling trial has been checked on a physical iPhone, including calories, route elevation and pause markers. History sync uses that mapping for a reviewed batch. This is a local development POC, not an available App Store release; ongoing background sync and complete archive reconciliation remain out of scope.
+The individual cycling trial has been checked on a physical iPhone, including calories, route elevation and pause markers. The single-screen importer uses that mapping for the selected batch. This is a local development POC, not an available App Store release; ongoing background sync and complete archive reconciliation remain out of scope.
 
 Currently supported:
 
 * Native Strava sign-in, with a system browser fallback and validated OAuth state/callback/scope
 * Direct activity reads with `activity:read_all`, Keychain token storage and coordinated token refresh
-* Individual-day review and full-history pagination through an empty page, with deduplication and a fixed scan cutoff
-* A reviewed sequential history import with progress, duplicate skipping, pause/resume and per-workout undo
+* Automatic history loading after connection, paginated through an empty page with deduplication and a fixed scan cutoff
+* All-history, individual and inclusive local-date selection with one import button, progress, automatic duplicate skipping and pause/resume
 * Shared Strava quota headroom: pauses at 90% of the advertised short-term or daily budget; no retry loop
-* Individual UTF-8 TCX activity files containing runs or rides
-* Original timestamps, distance, recorded heart-rate samples and GPS route; TCX timer duration or Strava elapsed duration
+* Original timestamps, distance, recorded heart-rate samples and GPS route
 * Cycling power (with an estimated-power marker when applicable), cadence, speed, elevation gain and indoor/outdoor status from Strava
-* Estimated pause/resume events from Strava movement samples and stationary recording gaps, with a preview and an option to retain elapsed duration
-* Strava calories shown in preview, with an explicit choice to interpret them as active energy
-* A review screen and explicit user confirmation before any Health write
+* Estimated pause/resume events from Strava movement samples and stationary recording gaps, enabled automatically
+* Available Strava calories saved as active energy automatically
+* A fixed import button showing the selected count; no additional review checkbox or confirmation sheet. Apple’s required Health permission sheet remains
 * Stable per-activity identifiers, a persistent import journal and conservative matching against visible Health workouts
 * Undo for this app's workout, route and associated samples, including interrupted imports
-* A clearly labelled synthetic 2018 example (read-only on physical devices; writable only to simulator Health)
+* Clearly labelled synthetic 2018 rides, available only with Debug simulator launch arguments
 
 Limits:
 
-* Up to 20 files, 20 MB combined, 100 activities and 100,000 track points per selection; each activity is confirmed individually
-* FIT, GPX, ZIP archives, sports other than runs/rides, ongoing background sync and edited-workout reconciliation are not implemented
+* The app UI uses Strava only. The TCX parser remains in the core package for development; file opening, FIT, GPX, ZIP archives, other sports, ongoing background sync and edited-workout reconciliation are outside this flow
 * History scans are limited to 500 pages / 100,000 activities. A failed, cancelled or capped scan cannot start an incomplete batch
-* History summaries and batch outcomes remain in memory. After closing or restarting, reload history and review again; completed journal entries are skipped. Unfinished transactions require scoped Undo before resuming
+* History summaries and batch outcomes remain in memory. After closing or restarting, reload history and select again; completed journal entries are skipped. Unfinished transactions require scoped Undo before resuming
 * Keep the app open for a batch. Leaving the foreground requests a pause after the current transaction. API errors and quota limits pause the batch; resume manually when resolved. The shared Stitch app may consume quota concurrently
-* Strava does not provide Garmin's original timer events. Full-resolution movement samples and stationary recording gaps can estimate pauses; these are shown before importing and can be disabled. Health receives real pause/resume events without shifting sample timestamps. Workout duration excludes enabled pauses; Strava moving time remains separate. Fitness controls graph presentation
-* Missing streams produce a summary-only preview. No heart-rate or route samples are invented
-* TCX calories, cadence and power remain unsupported. Strava’s calorie value has no active/resting split: active energy is written only when the user enables that interpretation. No resting calories are fabricated
+* Strava does not provide Garmin's original timer events. Full-resolution movement samples and stationary recording gaps can estimate pauses; these are imported automatically. Health receives real pause/resume events without shifting sample timestamps. Workout duration excludes enabled pauses; Strava moving time remains separate. Fitness controls graph presentation
+* Missing streams produce a summary-only import. No heart-rate or route samples are invented
+* TCX calories, cadence and power remain unsupported. Strava’s calorie value has no active/resting split: the app always treats the supplied value as active energy. No resting calories are fabricated
 * Only available cycling streams become Health samples. Summary-only power/cadence averages are not expanded into invented time series. Device/Strava estimates retain their source limitations
 * Route altitudes preserve the source's elevation profile, including zero and negative elevations. Missing altitudes remain invalid. Strava and TCX do not supply recording accuracy: imported route points use a documented 50 m accuracy assumption so Core Location treats supplied coordinates/altitudes as valid. Route metadata labels this assumption; it is not measured sensor precision or a guaranteed error bound
-* No fabricated sensor readings, calorie totals or missing altitude values. Inferred pauses are explicitly labelled as estimates in the preview and Health event metadata
+* No fabricated sensor readings, calorie totals or missing altitude values. Inferred pauses are labelled as estimates in Health event metadata
 * Ambiguous duplicates are blocked, with no override in this first POC
-* Read permission can be denied or limited without a distinguishable empty-result error. Users must allow full workout history and review the date in Health. Cross-app duplicate prevention cannot be guaranteed when Health hides data
-* When compiled with Xcode 27.1 / Swift 6.4 or later, the app also checks iOS 27's earliest-authorised-date API and blocks imports outside a known limited history window. Older toolchains retain the explicit user review safeguard
+* Read permission can be denied or limited without a distinguishable empty-result error. Duplicate checks run automatically and can only inspect authorised workouts. Cross-app duplicate prevention cannot be guaranteed when Health hides data
+* When compiled with Xcode 27.1 / Swift 6.4 or later, the app also checks iOS 27's earliest-authorised-date API and blocks imports outside a known limited history window. Older toolchains cannot check this boundary
 * Activity rings, awards and physical-device behaviour need separate acceptance testing
 * Uninstalling the app does not delete its Health data, but removes its local undo journal. Check results and undo unwanted imports before uninstalling
 
@@ -58,27 +56,20 @@ Copy `Config/LocalStrava.plist.example` to `Config/LocalStrava.plist`, fill in t
 
 The local Debug build copies this configuration into its bundle; Release builds remove it and do not enable Strava. This is a personal development setup: an embedded client secret is recoverable from the bundle, so do not distribute this Debug app or publish its build artifacts. Production OAuth needs a separately reviewed credential strategy.
 
-The redirect is `healthimport-strava://YOUR_CALLBACK_HOST/oauth/callback`. It uses the existing allowed hostname with an app-specific scheme; the callback is handled on the iPhone and does not visit that website. There is no relay, server, webhook or change to Stitch’s callback domain. OAuth asks only for activity read access. The shared developer app name will appear in Strava’s consent screen. Shared app quotas and grants still apply; do not revoke that grant to sign out of this trial. **Forget connection on this device** deletes only this app’s tokens and preview.
+The redirect is `healthimport-strava://YOUR_CALLBACK_HOST/oauth/callback`. It uses the existing allowed hostname with an app-specific scheme; the callback is handled on the iPhone and does not visit that website. There is no relay, server, webhook or change to Stitch’s callback domain. OAuth asks only for activity read access. The shared developer app name will appear in Strava’s consent screen. Shared app quotas and grants still apply; do not revoke that grant to sign out of this trial. **Disconnect Strava** in the Options menu deletes only this app’s tokens and activity list.
 
-### Try an individual activity
+### Import activities
 
-1. Tap **Connect with Strava** and approve the activity read permission
-2. Choose yesterday’s activity (or adjust the activity date and tap **Find activities**)
-3. Review the timestamp, distance, duration, detected breaks, cycling sample counts and elevation. **Treat detected breaks as pauses** is enabled when breaks are found; disable it to retain elapsed duration. Enable **Use Strava calories as active energy** only if that interpretation matches the recording
-4. Check the date in Apple Health, then confirm **Save to Health** and grant the requested Health access
-5. Check the workout in Health/Fitness, including its source and available heart rate/route
-6. Use **Undo import** if needed; stable IDs prevent importing that same activity twice
+1. Tap **Connect with Strava** and approve activity read access. The app loads your history automatically; this does not write to Health
+2. Choose **All history**, **Individual** or **Date range**. Individual mode allows multiple selections; date ranges include both complete local calendar days. The matching rides appear on the same screen
+3. Tap the bottom **Import … rides** button. Import starts immediately, with no extra app confirmation. Grant Apple’s required Health permissions when prompted. Available Strava calories are always imported as active energy, and detected pauses preserve the original timestamps
+4. Keep the app open. **Pause import** finishes the current transaction first. Network, permission and quota errors pause automatically; **Resume import** retries the pending activity. **Skip this activity** omits a failed item for this session
+5. Existing journal entries and matching visible Health workouts are skipped automatically. Reopening loads history again and uses the protected journal to avoid repeating completed writes
+6. Open **Options → Import history** for per-workout **Undo import** or interrupted-import cleanup. **Options → Privacy** explains local processing and permissions
 
-### Sync history
+The importer supports runs as well as rides. Unsupported sports are left out. No batch starts just by connecting, loading or changing the selection.
 
-1. Tap **Sync activity history**, then **Load Strava history**. The app reads summaries directly from Strava; this does not write to Health
-2. Review the date range and activity list. Other sports are excluded. Choose whether Strava calories represent active energy for this batch and whether to import estimated pauses; original timestamps remain intact
-3. Review existing workouts in Health, enable the confirmation toggle, then choose **Import history into Health** and **Start import**. Allow the required writes and full workout read access
-4. Keep the app open. **Pause import** finishes the current transaction first. Network, permission and quota errors pause automatically; **Resume import** retries the same pending activity. **Skip** omits an item only for the current session
-5. Close/reopen or restart safely: load history again and the protected journal skips completed imports before fetching their details. Matches visible in Health are also skipped. If an import could not roll back, use its **Undo** on the main screen before resuming
-6. Completed workouts appear in main-screen import history with individual Undo. There is no automatic mass deletion, background polling or server-side job
-
-The simulator offers **Preview synthetic history sync** under Other options. It uses bundled invented activities, makes no Strava requests and can write only to simulator Health.
+For synthetic UI review, launch a Debug simulator build with `--preview`. Its connect button opens six invented rides without OAuth or Strava requests. `--preview-connected` opens the list directly. These flags have no effect on physical devices or Release builds; demo imports write only to simulator Health.
 
 ### Avoiding a Strava–Health sync loop
 
@@ -109,7 +100,7 @@ xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-For the HealthKit integration tests, first import the synthetic run and ride in a dedicated simulator and grant Health access, enabling active energy for the ride. Tests check saved values, cycling statistics, duplicate matching, round-trip route altitudes, pause-adjusted duration with unchanged dates/totals and scoped undo. They skip on physical devices and simulators without write permission. Use that simulator's ID:
+For the HealthKit integration tests, grant Health write access in a dedicated simulator; a synthetic ride can be imported using `--preview`. Tests check saved values, cycling statistics, duplicate matching, round-trip route altitudes, pause-adjusted duration with unchanged dates/totals and scoped undo. They skip on physical devices and simulators without write permission. Use that simulator's ID:
 
 ```sh
 xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \
@@ -121,20 +112,9 @@ Signing-team settings are machine-local. There is no App Store Connect app recor
 
 Keep default ad-hoc signing enabled when running or testing in a simulator; `CODE_SIGNING_ALLOWED=NO` above is only a compilation check and does not embed the simulated HealthKit entitlement.
 
-## Try an export
-
-1. Export one of your own activities as TCX from the Strava website. Strava documents appending `/export_tcx` to its activity URL. Do not commit the export; `PrivateExports/` is ignored for local work
-2. Transfer it to Files on the iPhone and choose it in Health Import
-3. Review the date and measurements, check that date in Apple Health, and confirm the import
-4. Allow the requested writes and full workout read access in the Health permission sheet
-5. Verify the workout in Health/Fitness, then try the same file again. It should be blocked
-6. Return to import history and undo. Verify removal of the workout and associated samples
-
-The TCX export endpoint may be unavailable for activities without GPS; use original FIT files for those once FIT support is implemented. Original exported measurements may differ from Strava's subsequently corrected or recalculated values.
-
 ## Design
 
-Pause detection requires original stream timing and a median sample interval of at most 10 seconds. Contiguous `moving == false` intervals become estimated pauses. Gaps of at least 30 seconds and ten times the normal sample interval require no more than 20 metres of cumulative travel (or endpoint displacement when distance is absent). A gap without a nonmoving flag retains one normal sampling interval before the estimated pause. Downsampled, sparse, unlocated or moving gaps are not automatically treated as breaks. Leading/trailing missing samples are not extrapolated into pauses, and an all-paused result is rejected. These rules cannot distinguish every sensor dropout from a recording pause, so the preview retains the user's choice
+Pause detection requires original stream timing and a median sample interval of at most 10 seconds. Contiguous `moving == false` intervals become estimated pauses. Gaps of at least 30 seconds and ten times the normal sample interval require no more than 20 metres of cumulative travel (or endpoint displacement when distance is absent). A gap without a nonmoving flag retains one normal sampling interval before the estimated pause. Downsampled, sparse, unlocated or moving gaps are not automatically treated as breaks. Leading/trailing missing samples are not extrapolated into pauses, and an all-paused result is rejected. These rules cannot distinguish every sensor dropout from a recording pause, so event metadata records that pause timing is estimated
 
 When pauses are enabled, distance and chosen active-energy totals are apportioned across unpaused intervals in proportion to their durations. HealthKit would otherwise prorate a whole-workout summary sample and discard part of its total. The original totals are preserved; sample metadata labels their temporal distribution as estimated. Recorded route, heart-rate, power, cadence and speed timestamps are never shifted
 

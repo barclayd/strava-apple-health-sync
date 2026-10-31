@@ -89,9 +89,6 @@ enum StravaNetwork {
     var busy = false
     var authorising = false
     var message: String?
-    var activities: [StravaActivity] = []
-    var fetched = false
-    var trialDate = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
     private(set) var configuration: StravaConfiguration?
     private var client: StravaClient?
     private var authSession: ASWebAuthenticationSession?
@@ -165,7 +162,6 @@ enum StravaNetwork {
             await AppDiagnostics.shared.record(.connectionSaved)
             connected = true
             busy = false
-            await fetch()
         } catch { await AppDiagnostics.shared.record(.authorisationFailed); busy = false; message = error.localizedDescription }
     }
 
@@ -175,26 +171,6 @@ enum StravaNetwork {
         authSession?.cancel(); authSession = nil
     }
 
-    func fetch() async {
-        guard !busy, connected, let client else { return }
-        busy = true; fetched = false; activities = []
-        defer { busy = false }
-        do { activities = try await client.activities(on: trialDate); fetched = true; await AppDiagnostics.shared.record(.activitiesLoaded) }
-        catch { message = error.localizedDescription }
-    }
-
-    func preview(_ activity: StravaActivity, into model: ImportModel) async -> Bool {
-        guard !busy, !model.busy, let client else { return false }
-        busy = true
-        defer { busy = false }
-        do {
-            let (source, value) = try await client.activity(id: activity.id)
-            model.activities = [value]; model.example = false; model.stravaSource = source
-            await AppDiagnostics.shared.record(.previewLoaded)
-            return true
-        } catch { await AppDiagnostics.shared.record(.previewFailed); message = error.localizedDescription; return false }
-    }
-
     func forget() async {
         guard !busy, let client else { return }
         busy = true
@@ -202,7 +178,7 @@ enum StravaNetwork {
         do {
             cancel()
             try await client.forgetConnection()
-            connected = false; activities = []; fetched = false
+            connected = false
             await AppDiagnostics.shared.record(.connectionForgotten)
         } catch { message = error.localizedDescription }
     }

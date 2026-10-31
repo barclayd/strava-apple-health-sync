@@ -1,247 +1,354 @@
 import SwiftUI
-import UniformTypeIdentifiers
 import ActivityImportCore
+
+// A restrained palette that keeps the primary action clear in light and dark mode.
+enum ImportTheme {
+    static let accent = Color(uiColor: UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0.48, green: 0.88, blue: 0.70, alpha: 1)
+        : UIColor(red: 0.08, green: 0.33, blue: 0.26, alpha: 1) })
+    static let background = Color(uiColor: .systemGroupedBackground)
+    static let surface = Color(uiColor: .secondarySystemGroupedBackground)
+    static let orange = Color(red: 0.94, green: 0.27, blue: 0.01)
+}
 
 struct ImportView: View {
     @Bindable var model: ImportModel
     @Bindable var strava: StravaConnection
-    @State private var showFiles = false
+    @State private var library = ActivityLibrary()
+    @State private var showHistory = false
     @State private var showPrivacy = false
-    @State private var showHistoryExample = false
+    @State private var forget = false
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var connected: Bool { ActivityLibrary.preview ? library.previewConnected : strava.connected }
+    private var locked: Bool { library.active || model.busy || strava.busy }
+    private var needsCleanup: Bool { model.records.contains { !$0.completed } }
+    private var ridesOnly: Bool { library.activities.allSatisfy { $0.sport == .cycling } }
+    private var noun: String { ridesOnly ? "rides" : "activities" }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    if let error = model.journalError { notice(error) }
+                    if needsCleanup {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("One import needs attention").font(.headline)
+                            Text("Undo the interrupted import to continue.").foregroundStyle(.secondary)
+                            Button("Open import history") { showHistory = true }.font(.subheadline.bold())
+                        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                            .background(ImportTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+                    }
+                    if connected { connectedContent } else { welcome }
+                    if let message = strava.message ?? model.message {
+                        notice(message) { strava.message = nil; model.message = nil }
+                    }
+                }
+                .padding(.horizontal, 24).padding(.top, connected ? 20 : 36).padding(.bottom, 28)
+                .frame(maxWidth: 620)
+                .frame(maxWidth: .infinity)
+            }
+            .background(ImportTheme.background)
+            .navigationTitle("Health Import")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Import history", systemImage: "clock.arrow.circlepath") { showHistory = true }
+                        Button("Privacy", systemImage: "lock.shield") { showPrivacy = true }
+                        if connected {
+                            Button("Refresh activities", systemImage: "arrow.clockwise") { library.load(strava: strava, model: model) }
+                            Button("Disconnect Strava", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { forget = true }
+                        }
+                    } label: { Image(systemName: "ellipsis").font(.body.weight(.semibold)).frame(width: 36, height: 36) }
+                    .accessibilityLabel("Options").disabled(locked)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
+            .sheet(isPresented: $showHistory) { ImportHistoryView(model: model) }
+            .sheet(isPresented: $showPrivacy) { PrivacyView() }
+            .confirmationDialog("Disconnect Strava on this device?", isPresented: $forget, titleVisibility: .visible) {
+                Button("Disconnect Strava", role: .destructive) {
+                    Task {
+                        if ActivityLibrary.preview { library.previewConnected = false }
+                        else { await strava.forget() }
+                        if !connected { library.clear() }
+                    }
+                }
+            } message: { Text("Your imported workouts stay in Health. Your other Strava connections stay connected.") }
+            .task {
+                if ActivityLibrary.preview && ProcessInfo.processInfo.arguments.contains("--preview-connected") {
+                    library.previewConnected = true
+                }
+                if connected && !library.loaded { library.load(strava: strava, model: model) }
+            }
+            .onChange(of: connected) { _, value in
+                if value && !library.loaded { library.load(strava: strava, model: model) }
+            }
+            .onChange(of: library.selection) { _, _ in library.selectionChanged() }
+            .onChange(of: scenePhase) { _, phase in if phase == .background { library.pause() } }
+        }
+    }
+
+    private var welcome: some View {
+        VStack(alignment: .leading, spacing: 32) {
+            HStack(spacing: 18) {
+                Image(systemName: "bicycle").foregroundStyle(ImportTheme.orange)
+                Image(systemName: "arrow.right").font(.title3).foregroundStyle(.tertiary)
+                Image(systemName: "heart.fill").foregroundStyle(ImportTheme.accent)
+            }.font(.system(size: 36, weight: .medium)).accessibilityHidden(true).padding(.top, 16)
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Every ride.\nOne place.")
+                    .font(.system(size: 48, weight: .semibold, design: .rounded))
+                    .tracking(-1.5).fixedSize(horizontal: false, vertical: true)
+                Text("Bring your Strava history\ninto Apple Health.")
+                    .font(.title3).foregroundStyle(.secondary).lineSpacing(4)
+            }
+            VStack(alignment: .leading, spacing: 22) {
+                feature("Your history, your choice", subtitle: "All your rides, a few favourites or a date range.", symbol: "checklist")
+                feature("Straight to Health", subtitle: "Calories, routes and recorded ride data.", symbol: "heart.text.clipboard")
+                feature("Private by design", subtitle: "Processed on your device. No app server.", symbol: "lock.shield")
+            }.padding(.top, 8)
+            if ActivityLibrary.preview { Text("Demo · invented rides").font(.caption).foregroundStyle(.secondary) }
+        }.padding(.bottom, 8)
+    }
+
+    private func feature(_ title: String, subtitle: String, symbol: String) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(ImportTheme.accent).frame(width: 26, height: 26)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(subtitle).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder private var connectedContent: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(ActivityLibrary.preview ? "Demo · invented rides" : "Connected to Strava", systemImage: "checkmark.circle.fill")
+                .font(.caption.weight(.semibold)).foregroundStyle(ImportTheme.accent)
+            Text("Your \(noun),\nin Apple Health.")
+                .font(.system(size: 34, weight: .bold, design: .rounded)).tracking(-0.8)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if let error = library.error {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(error).font(.subheadline).foregroundStyle(.secondary)
+                if library.queue == nil {
+                    Button("Retry") { library.load(strava: strava, model: model) }.font(.subheadline.bold())
+                } else if !needsCleanup && !library.running {
+                    Button("Skip this activity") { library.skip() }.font(.subheadline.bold())
+                }
+            }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+                .background(ImportTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+        }
+        if library.loading {
+            HStack(spacing: 12) {
+                ProgressView()
+                Text(library.scannedCount == 0 ? "Loading your activities…" : "Found \(library.scannedCount) activities…")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }.padding(.vertical, 28)
+        } else if library.loaded {
+            selectionControls
+            if let queue = library.queue {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: library.finished ? "checkmark.circle.fill" : "arrow.down.heart")
+                            .foregroundStyle(ImportTheme.accent)
+                        Text(library.finished ? "Import complete" : library.running ? "Importing to Health" : "Import paused")
+                            .font(.headline)
+                        Spacer()
+                        Text("\(library.outcomes.count)/\(queue.activities.count)").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    if !library.finished {
+                        ProgressView(value: Double(library.outcomes.count), total: Double(max(1, queue.activities.count))).tint(ImportTheme.accent)
+                    }
+                    Text(progressSummary).font(.subheadline).foregroundStyle(.secondary)
+                }.padding(18).background(ImportTheme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+                    .accessibilityElement(children: .combine)
+            }
+            if library.visible.isEmpty {
+                ContentUnavailableView(library.activities.isEmpty ? "No rides yet" : "No rides in this period",
+                    systemImage: "bicycle", description: Text(library.activities.isEmpty ? "Your Strava runs and rides will appear here." : "Try a different start or end date."))
+            } else { activityRows }
+        }
+
+    }
+
+    private var selectionControls: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if dynamicTypeSize.isAccessibilitySize {
+                scopePicker.pickerStyle(.menu)
+            } else {
+                scopePicker.pickerStyle(.segmented)
+            }
+            if library.selection.scope == .dates {
+                VStack(spacing: 12) {
+                    DatePicker("From", selection: $library.selection.start, in: ...library.selection.end, displayedComponents: .date)
+                        .accessibilityIdentifier("startDate")
+                    Divider()
+                    DatePicker("To", selection: $library.selection.end, in: library.selection.start...Date(), displayedComponents: .date)
+                        .accessibilityIdentifier("endDate")
+                }.font(.subheadline).padding(18).background(ImportTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+            }
+            HStack {
+                Text(library.selection.scope == .individual ? "Select your \(noun)" : "\(library.visible.count) \(noun)")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                if library.selection.scope == .individual && !library.selection.ids.isEmpty {
+                    Button("Clear") { library.selection.ids = [] }.font(.subheadline)
+                } else if let first = library.visible.last?.startDate, let last = library.visible.first?.startDate {
+                    Text(first.formatted(.dateTime.year()) == last.formatted(.dateTime.year())
+                         ? first.formatted(.dateTime.year()) : "\(first.formatted(.dateTime.year()))–\(last.formatted(.dateTime.year()))")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }.disabled(library.running || model.busy)
+    }
+
+    private var scopePicker: some View {
+        Picker("Import selection", selection: $library.selection.scope) {
+            ForEach(ImportScope.allCases, id: \.self) { scope in Text(scope.rawValue).tag(scope) }
+        }.accessibilityIdentifier("importScope")
+    }
+
+    private var activityRows: some View {
+        let imported = Set(model.records.filter(\.completed).map(\.activityID))
+        let visible = library.visible
+        return LazyVStack(spacing: 0) {
+            ForEach(visible) { activity in
+                let exists = imported.contains("strava-v1-\(activity.id)") || library.outcomes[activity.id] == .duplicate
+                let selected = library.selection.scope != .individual || library.selection.ids.contains(activity.id)
+                if library.selection.scope == .individual && !exists {
+                    Button {
+                        if !library.selection.ids.insert(activity.id).inserted { library.selection.ids.remove(activity.id) }
+                    } label: { activityRow(activity, selected: selected, imported: false) }
+                    .buttonStyle(.plain).disabled(library.running || model.busy)
+                    .accessibilityIdentifier("select-\(activity.id)")
+                    .accessibilityAddTraits(selected ? [.isSelected] : [])
+                } else { activityRow(activity, selected: selected, imported: exists) }
+                if activity.id != visible.last?.id { Divider().padding(.leading, 68) }
+            }
+        }.background(ImportTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func activityRow(_ activity: StravaActivity, selected: Bool, imported: Bool) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: activity.sport?.symbol ?? "bicycle")
+                .font(.system(size: 20, weight: .medium)).foregroundStyle(ImportTheme.accent)
+                .frame(width: 36, height: 42)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(activity.name).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                    .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                Text("\(activity.startDate.formatted(.dateTime.day().month(.abbreviated).year())) · \((activity.distance / 1000).formatted(.number.precision(.fractionLength(1)))) km")
+                    .font(.caption).foregroundStyle(.secondary)
+                if imported { Text("In Health").font(.caption.weight(.medium)).foregroundStyle(ImportTheme.accent) }
+            }
+            Spacer(minLength: 2)
+            Image(systemName: imported ? "checkmark.seal.fill" : selected ? "checkmark.circle.fill" : "circle")
+                .font(.title3).foregroundStyle(imported || selected ? ImportTheme.accent : Color.secondary.opacity(0.4))
+                .accessibilityHidden(true)
+        }.padding(.horizontal, 16).padding(.vertical, 17).contentShape(Rectangle())
+            .accessibilityElement(children: .combine)
+    }
+
+    private var progressSummary: String {
+        let imported = library.outcomes.values.filter { $0 == .imported }.count
+        let skipped = library.outcomes.count - imported
+        if library.running { return library.pauseRequested ? "Finishing the current activity…" : "\(library.outcomes.count) of \(library.queue?.activities.count ?? 0) processed" }
+        return "\(imported) imported" + (skipped > 0 ? " · \(skipped) skipped" : "")
+    }
+
+    private var bottomBar: some View {
+        VStack(spacing: 10) {
+            if connected {
+                let count = library.pending(records: model.records).count
+                Button {
+                    if library.running { library.pause() }
+                    else { Task { await library.run(strava: strava, model: model) } }
+                } label: {
+                    HStack(spacing: 10) {
+                        if library.running && library.pauseRequested { ProgressView().tint(ImportTheme.background) }
+                        else { Image(systemName: library.running ? "pause.fill" : "arrow.down.heart") }
+                        Text(library.running ? (library.pauseRequested ? "Pausing…" : "Pause import")
+                            : library.hasPending ? "Resume import"
+                            : count > 0 ? "Import \(count) \(count == 1 ? (ridesOnly ? "ride" : "activity") : noun)"
+                            : library.selection.scope == .individual && library.selection.ids.isEmpty ? "Select rides to import"
+                            : library.finished ? "Up to date" : "Import to Apple Health")
+                    }.font(.headline).frame(maxWidth: .infinity).padding(.vertical, 10)
+                }
+                .buttonStyle(.borderedProminent).tint(ImportTheme.accent).foregroundStyle(Color(uiColor: .systemBackground))
+                .disabled(library.loading || (!library.running && (model.busy || (count == 0 && !library.hasPending) || model.journalError != nil || needsCleanup)) || library.pauseRequested && library.running)
+                .accessibilityIdentifier("importSelection")
+                Text(library.running ? "Keep the app open while importing" : "Saved directly to Apple Health")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Button {
+                    if ActivityLibrary.preview { library.previewConnected = true }
+                    else { strava.connect() }
+                } label: {
+                    HStack(spacing: 10) {
+                        if strava.busy || strava.authorising { ProgressView().tint(.white) }
+                        Text(strava.authorising ? "Connecting to Strava…" : "Connect with Strava")
+                    }.font(.headline).frame(maxWidth: .infinity).padding(.vertical, 10)
+                }.buttonStyle(.borderedProminent).tint(ImportTheme.orange)
+                    .disabled(strava.busy || strava.authorising || (!ActivityLibrary.preview && strava.configuration == nil))
+                    .accessibilityIdentifier("connectStrava")
+                if strava.authorising {
+                    Button("Cancel") { strava.cancel() }.font(.caption)
+                } else {
+                    Text(strava.configuration == nil && !ActivityLibrary.preview ? "Strava isn’t configured in this build" : "Connect once. Import whenever you’re ready.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }.padding(.horizontal, 24).padding(.top, 16).padding(.bottom, 10)
+            .frame(maxWidth: 620).frame(maxWidth: .infinity)
+            .background(.bar)
+    }
+
+    private func notice(_ text: String, dismiss: (() -> Void)? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(text).font(.subheadline).foregroundStyle(.secondary)
+            if let dismiss { Button("Dismiss", action: dismiss).font(.subheadline.bold()) }
+        }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .background(ImportTheme.surface, in: RoundedRectangle(cornerRadius: 18))
+    }
+}
+
+private struct ImportHistoryView: View {
+    @Bindable var model: ImportModel
     @State private var undoRecord: ImportRecord?
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Image(systemName: "heart.text.clipboard")
-                            .font(.system(size: 36, weight: .medium)).foregroundStyle(.indigo)
-                            .accessibilityHidden(true)
-                        Text("Bring old workouts\ninto Apple Health.")
-                            .font(.largeTitle.bold()).fixedSize(horizontal: false, vertical: true)
-                        Text("Connect with Strava, review your history, then save your workouts to Health.")
-                            .font(.body).foregroundStyle(.secondary)
-                        Label("Direct to your device. No activity uploads.", systemImage: "lock.shield")
-                            .font(.subheadline.weight(.medium)).foregroundStyle(.indigo)
-                    }.padding(.vertical, 14)
-                }.listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-
-                StravaTrialSection(strava: strava, model: model)
-
-                Section {
-                  DisclosureGroup("Import a file or explore an example") {
-                    Button { showFiles = true } label: {
-                        Label("Choose TCX files", systemImage: "doc.badge.plus").font(.headline).padding(.vertical, 8)
-                    }.accessibilityIdentifier("chooseFiles")
-                    Button { Task { await model.loadExample() } } label: {
-                        Label("Preview a synthetic example", systemImage: "play.circle")
-                    }.accessibilityIdentifier("loadExample")
-                    Button { model.loadCyclingExample() } label: {
-                        Label("Preview a synthetic ride", systemImage: "bicycle")
-                    }.accessibilityIdentifier("loadCyclingExample")
-                    Button { model.loadCyclingExample(withBreak: true) } label: {
-                        Label("Preview a ride with a break", systemImage: "pause.circle")
-                    }.accessibilityIdentifier("loadPausedExample")
-                    if model.canImportExample {
-                        Button("Preview synthetic history sync") { showHistoryExample = true }
-                            .accessibilityIdentifier("loadHistoryExample")
-                    }
-                  }
-                } header: { Text("Other options") } footer: {
-                    Text("Import runs and rides directly from Strava, or use an individual TCX file.")
+                if model.records.isEmpty {
+                    ContentUnavailableView("No imports yet", systemImage: "clock.arrow.circlepath",
+                        description: Text("Your imported workouts will appear here."))
                 }
-
-                if let error = model.journalError {
-                    Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
+                ForEach(model.records.reversed()) { record in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(record.sport.title, systemImage: record.sport.symbol).font(.headline)
+                        Text(record.start.formatted(date: .abbreviated, time: .shortened)).font(.subheadline).foregroundStyle(.secondary)
+                        Button(record.completed ? "Undo import" : "Undo interrupted import", role: .destructive) { undoRecord = record }
+                    }.padding(.vertical, 6)
                 }
-                if !model.activities.isEmpty {
-                    Section {
-                        ForEach(model.activities) { activity in
-                            NavigationLink {
-                                ActivityView(activity: activity, model: model)
-                            } label: {
-                                HStack(spacing: 14) {
-                                    Image(systemName: activity.sport.symbol).font(.title2).foregroundStyle(.indigo)
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(activity.sport.title).font(.headline)
-                                        Text(activity.start.formatted(date: .abbreviated, time: .shortened))
-                                            .font(.subheadline).foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Text(activity.distance / 1000, format: .number.precision(.fractionLength(2)))
-                                        .monospacedDigit()
-                                    Text("km").foregroundStyle(.secondary)
-                                }.padding(.vertical, 4)
-                            }.accessibilityIdentifier("activity-\(activity.id)")
-                        }
-                        Button("Clear preview", role: .destructive) { model.activities = []; model.example = false; model.stravaSource = nil }
-                    } header: { Text(model.example ? "Synthetic example" : "Ready to review") } footer: {
-                        if model.example {
-                            Text(model.canImportExample ? "Invented data. Imports here use only this simulator’s Health store." : "Invented data for a read-only preview. Connect Strava or choose your own file to import.")
-                        } else { Text("Previews are held in memory. Activity data is not saved to an app cache.") }
-                    }
-                }
-
-                if !model.records.isEmpty {
-                    Section {
-                        ForEach(model.records.reversed()) { record in
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Label(record.sport.title, systemImage: record.sport.symbol).font(.headline)
-                                    Spacer()
-                                    Text(record.completed ? "Imported" : "Cleanup needed")
-                                        .font(.caption.weight(.medium)).foregroundStyle(record.completed ? Color.secondary : Color.orange)
-                                }
-                                Text(record.start.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.subheadline).foregroundStyle(.secondary)
-                                Button(record.completed ? "Undo import" : "Undo interrupted import", role: .destructive) {
-                                    undoRecord = record
-                                }.accessibilityIdentifier("undoImport")
-                            }.padding(.vertical, 4)
-                        }
-                    } header: { Text("Import history") } footer: {
-                        Text("Undo removes this app’s workout and all associated samples for that import. Keep the app installed until you’ve checked the result.")
-                    }
-                }
-                Section {
-                    Button { showPrivacy = true } label: { Label("How your data stays private", systemImage: "hand.raised") }
-                } footer: {
-                    Text("Apple Health may sync with iCloud if you have enabled it. Files you choose may come from a cloud provider. Those services follow your own settings.")
-                }
-            }
-            .navigationTitle("Health Import").navigationBarTitleDisplayMode(.inline)
-            .fileImporter(isPresented: $showFiles, allowedContentTypes: [UTType(importedAs: "com.garmin.tcx"), .xml],
-                          allowsMultipleSelection: true) { result in
-                switch result {
-                case .success(let urls): Task { await model.load(urls) }
-                case .failure: model.message = "The files could not be opened. Try choosing them again."
-                }
-            }
-            .sheet(isPresented: $showPrivacy) { PrivacyView() }
-            .sheet(isPresented: $showHistoryExample) { HistorySyncView(strava: strava, model: model, synthetic: true) }
-            .confirmationDialog("Remove this import from Apple Health?", isPresented: Binding(
-                get: { undoRecord != nil }, set: { if !$0 { undoRecord = nil } }), titleVisibility: .visible) {
+                if let message = model.message { Text(message).font(.subheadline).foregroundStyle(.secondary) }
+            }.navigationTitle("Import history").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.disabled(model.busy) } }
+                .disabled(model.busy).interactiveDismissDisabled(model.busy)
+                .confirmationDialog("Remove this import from Apple Health?", isPresented: Binding(
+                    get: { undoRecord != nil }, set: { if !$0 { undoRecord = nil } }), titleVisibility: .visible) {
                     if let record = undoRecord {
-                        Button("Remove imported data", role: .destructive) { Task { await model.undo(record) }; undoRecord = nil }
-                    }
-                } message: { Text("Only records created by this app for the selected import will be deleted.") }
-        }
-        .overlay { if (model.busy && !model.historyRunning) || strava.busy { ProgressView(strava.busy ? "Connecting to Strava…" : "Working on device…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20)) } }
-        .disabled((model.busy && !model.historyRunning) || strava.busy)
-        .alert("Health Import", isPresented: Binding(get: { model.message != nil || strava.message != nil }, set: { if !$0 { model.message = nil; strava.message = nil } })) {
-            Button("OK") { model.message = nil; strava.message = nil }
-        } message: { Text(model.message ?? strava.message ?? "") }
-    }
-}
-
-struct ActivityView: View {
-    let activity: Activity
-    @Bindable var model: ImportModel
-    @State private var reviewed = false
-    @State private var confirm = false
-    @State private var useCaloriesAsActive = false
-    @State private var usePauses = true
-
-    private var alreadyImported: Bool { model.records.contains { $0.activityID == activity.id } }
-
-    var body: some View {
-        List {
-            Section {
-                LabeledContent("Activity", value: activity.sport.title)
-                LabeledContent("Started", value: activity.start.formatted(date: .abbreviated, time: .shortened))
-                if let source = model.stravaSource, source.id == activity.stravaID {
-                    LabeledContent("Strava activity", value: source.name)
-                    LabeledContent("Strava moving time", value: duration(Double(source.movingTime)))
-                    if let device = source.deviceName { LabeledContent("Recorded with", value: device) }
-                    if !model.example { Link("View on Strava", destination: URL(string: "https://www.strava.com/activities/\(source.id)")!) }
-                }
-                LabeledContent(activity.stravaID == nil ? "Timer duration" : "Workout duration", value: duration(usePauses ? activity.workoutDuration : activity.duration))
-                LabeledContent("Elapsed time", value: duration(activity.end.timeIntervalSince(activity.start)))
-                LabeledContent("Distance", value: "\((activity.distance / 1000).formatted(.number.precision(.fractionLength(2)))) km")
-                LabeledContent("Heart-rate samples", value: "\(activity.heartRatePoints.count)")
-                LabeledContent("Route points", value: "\(activity.routePoints.count)")
-                if activity.stravaID != nil {
-                    LabeledContent("Strava calories", value: activity.stravaCalories.map { "\($0.formatted(.number.precision(.fractionLength(0)))) kcal" } ?? "Not provided")
-                    if let gain = activity.elevationGain { LabeledContent("Elevation gain", value: "\(gain.formatted(.number.precision(.fractionLength(0)))) m") }
-                    if let indoor = activity.indoor { LabeledContent("Location", value: indoor ? "Indoor" : "Outdoor") }
-                    if activity.sport == .cycling {
-                        LabeledContent("Power samples", value: sampleCount(activity.powerPoints.count))
-                        if !activity.powerPoints.isEmpty { LabeledContent("Power source", value: activity.powerIsEstimated ? "Strava estimate / unspecified" : "Power meter") }
-                        LabeledContent("Cadence samples", value: sampleCount(activity.cadencePoints.count))
-                        LabeledContent("Speed samples", value: sampleCount(activity.speedPoints.count))
-                    }
-                }
-            } header: { Text(model.example ? "Synthetic activity" : "What will be imported") } footer: {
-                Text(activity.stravaID == nil
-                    ? "Original timestamps and timer duration are preserved. Calories, cadence and power are not imported in this POC."
-                    : "Original timestamps are preserved. Detected breaks can be excluded from workout duration using Health pause/resume events. Strava moving time is shown separately. Available cycling streams retain their timestamps; missing measurements stay absent.")
-            }
-            if !activity.pauses.isEmpty {
-                Section {
-                    Toggle("Treat detected breaks as pauses", isOn: $usePauses)
-                        .accessibilityIdentifier("useDetectedPauses")
-                    LabeledContent("Detected breaks", value: "\(activity.pauses.count)")
-                    LabeledContent("Time paused", value: duration(activity.pausedDuration))
-                    DisclosureGroup("Review break times") {
-                        ForEach(Array(activity.pauses.enumerated()), id: \.offset) { _, pause in
-                            LabeledContent("\(pause.start.formatted(date: .omitted, time: .standard)) – \(pause.end.formatted(date: .omitted, time: .standard))", value: duration(pause.duration))
+                        Button("Remove imported data", role: .destructive) {
+                            Task { await model.undo(record) }; undoRecord = nil
                         }
                     }
-                } footer: {
-                    Text("Break timing is estimated from Strava’s movement samples and stationary recording gaps. It may differ from Garmin’s original timer. Health receives pause/resume events; Fitness controls how its graphs display them. Turn this off to keep the full elapsed duration.")
-                }
-            }
-            if activity.stravaCalories != nil {
-                Section {
-                    Toggle("Use Strava calories as active energy", isOn: $useCaloriesAsActive)
-                        .accessibilityIdentifier("useStravaCalories")
-                } footer: {
-                    Text("Strava supplies one calorie value without an active/resting breakdown. Enable this if it represents activity calories from your recording. It will be saved as active energy and may affect your Move ring. Resting calories are not added or estimated.")
-                }
-            }
-            if alreadyImported {
-                Section {
-                    Text("This workout is already imported. To try the richer import, go back to Import history and undo the earlier copy first, then review and save again.")
-                }
-            }
-            Section {
-                Label("Check your existing workouts", systemImage: "checkmark.shield")
-                    .font(.headline)
-                Text("We check workouts Health lets us read and block likely duplicates. Health does not tell apps when read access is denied, and limited access can hide older workouts.")
-                Text("Allow full workout history in the Health permission sheet. Review this date in Health before proceeding; an empty result does not prove the workout is missing.")
-                    .foregroundStyle(.secondary)
-                Toggle("I’ve checked this date in Health", isOn: $reviewed)
-                    .accessibilityIdentifier("reviewedHealth")
-            }
-            Section {
-                Button { confirm = true } label: {
-                    Label(alreadyImported ? "Already in import history" : "Import into Apple Health", systemImage: "heart.fill")
-                        .font(.headline).padding(.vertical, 6)
-                }
-                .accessibilityIdentifier("importActivity")
-                .disabled(!reviewed || alreadyImported || model.busy || model.journalError != nil || (model.example && !model.canImportExample))
-            } footer: {
-                Text("Health will list Health Import as the source. You can undo the import from this app’s history.")
-            }
+                } message: { Text("Only this app’s workout and associated samples will be removed.") }
         }
-        .navigationTitle(activity.sport == .cycling ? "Review ride" : "Review workout").navigationBarTitleDisplayMode(.inline)
-        .disabled(model.busy)
-        .confirmationDialog("Save this workout and its samples to Health?", isPresented: $confirm, titleVisibility: .visible) {
-            Button("Save to Health") {
-                var selected = activity
-                selected.activeEnergy = useCaloriesAsActive ? activity.stravaCalories : nil
-                if !usePauses { selected.pauses = [] }
-                Task { await model.importActivity(selected) }
-            }
-        } message: { Text("Nothing is uploaded by Health Import. Your Apple Health iCloud settings still apply.") }
     }
-
-    private func duration(_ seconds: Double) -> String {
-        let value = Int(seconds.rounded())
-        return String(format: "%d:%02d:%02d", value / 3600, value / 60 % 60, value % 60)
-    }
-    private func sampleCount(_ count: Int) -> String { count == 0 ? "Not provided" : "\(count)" }
 }
 
 private struct PrivacyView: View {
@@ -249,28 +356,19 @@ private struct PrivacyView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section("What this app does") {
-                    Text("Connects directly to Strava to read the activities you review, including recorded heart rate and routes when available. History sync loads summaries, then fetches each workout in turn. Preview and duplicate checks run on your device. TCX file import is also available.")
-                    Text("Writes the selected workout and available distance, heart rate, route, cycling power, cadence, speed and elevation gain to Apple Health with your permission. Strava calories are written as active energy only when you enable that choice.")
-                    Text("Keeps a small import history on this device for duplicate protection and undo. That history is excluded from device backups. Original files are not copied into the app.")
-                }
-                Section("What we collect") {
-                    Text("The developer receives no activities or Health data. There is no app backend, analytics, advertising or crash-reporting service. Network requests go directly to Strava for sign-in and activity reads. Strava may collect API usage information under its own policy.")
-                    Text("Strava tokens are stored in this device’s Keychain, available only while unlocked and excluded from syncing and migration. Activity previews are held in memory, without a disk cache.")
-                    Text("This development build keeps a short local diagnostic log of operation stages and status codes. It excludes tokens and workout details, is excluded from backups, and can be read through Xcode for this trial.")
-                }
-                Section("Your Apple and file-provider settings") {
-                    Text("Apple Health may sync your data through iCloud. A file selected from iCloud Drive or another provider may be downloaded by Files. Those are services you control; this app does not upload your activities.")
+                Section("On your device") {
+                    Text("Health Import reads activities directly from Strava and saves your selection to Apple Health. There is no app server, analytics or advertising. Your activity data is held in memory, without a disk cache.")
+                    Text("Available Strava calories are saved as active energy. Recorded measurements and original timestamps are preserved, with estimated pauses for detected breaks.")
                 }
                 Section("Your control") {
-                    Text("You can revoke Health permissions in Settings. Undo removes the records this app created for an import, including associated samples. Uninstalling the app removes its local import history but does not delete workouts from Health.")
-                    Text("Forget connection removes this app’s Strava tokens and preview. Because this trial reuses Stitch’s developer app, revoking its access on Strava also affects Stitch and any other app using that grant. Undo unwanted Health imports before uninstalling.")
-                    Link("Manage connected apps on Strava", destination: URL(string: "https://www.strava.com/settings/apps")!)
-                    Link("Project and support", destination: URL(string: "https://github.com/barclayd/strava-apple-health-sync")!)
+                    Text("A protected import history on this device helps prevent duplicates and lets you undo this app’s imports. Health permissions can be changed in Settings. Duplicate checks can only see workouts you allow Health Import to read.")
+                    Text("Disconnect removes this app’s Strava tokens. Imported workouts stay in Health. Undo unwanted imports before uninstalling the app.")
                 }
-            }
-            .navigationTitle("Privacy").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                Section("Your settings") {
+                    Text("Apple Health may sync through iCloud according to your settings. Strava handles sign-in and activity requests under its own privacy policy. No activities or Health data are uploaded by Health Import.")
+                }
+            }.navigationTitle("Privacy").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
     }
 }

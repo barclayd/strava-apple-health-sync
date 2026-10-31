@@ -34,7 +34,7 @@ import ActivityImportCore
         guard writes.allSatisfy({ store.authorizationStatus(for: $0) == .sharingAuthorized }) else {
             throw ImportProblem("Allow writing all the data shown in this preview before importing. Nothing has been saved.")
         }
-        // Successful authorisation does NOT establish read permission. The UI explains this separately.
+        // Successful authorisation does NOT establish read permission. The privacy information explains this limitation.
     }
 
     func hasDuplicate(_ activity: Activity) async throws -> Bool {
