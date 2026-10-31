@@ -1,5 +1,19 @@
 import Foundation
 
+public enum StravaTimestampProblem: LocalizedError, Sendable, Equatable {
+    case invalid, duplicate, outOfOrder
+    case beyondElapsed(seconds: Double)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalid: "Strava returned an invalid sample timestamp. This ride has not been imported."
+        case .duplicate: "Strava returned repeated sample timestamps. This ride has not been imported."
+        case .outOfOrder: "Strava returned sample timestamps out of order. This ride has not been imported."
+        case .beyondElapsed: "Strava’s recorded samples extend beyond its activity duration. This ride has not been imported."
+        }
+    }
+}
+
 public struct StravaActivity: Decodable, Identifiable, Sendable {
     public let id: Int64
     public let name: String
@@ -45,9 +59,12 @@ public struct StravaActivity: Decodable, Identifiable, Sendable {
             throw ImportProblem("This activity has an unsupported sport or invalid measurements. This trial supports runs and rides.")
         }
         let points = try streams.points(start: startDate, elapsed: elapsedTime)
+        // Strava's integer summary duration can end up one second short of the
+        // ordered recording. Include that last sample without shifting or dropping it.
+        let duration = max(Double(elapsedTime), points.last?.date.timeIntervalSince(startDate) ?? 0)
         var result = Activity(sport: sport, start: startDate,
-                              end: startDate.addingTimeInterval(Double(elapsedTime)),
-                              duration: Double(elapsedTime), distance: distance, points: points)
+                              end: startDate.addingTimeInterval(duration),
+                              duration: duration, distance: distance, points: points)
         result.stravaID = id
         if let calories {
             guard calories.isFinite, (0...100_000).contains(calories) else { throw ImportProblem("Strava returned invalid calories.") }
@@ -118,12 +135,17 @@ public struct StravaStreams: Decodable, Sendable {
         try aligned(watts); try aligned(cadence); try aligned(velocitySmooth)
         try aligned(moving); try aligned(distance)
         var previous = -1.0
+        for offset in time.data {
+            guard offset.isFinite, offset >= 0 else { throw StravaTimestampProblem.invalid }
+            guard offset != previous else { throw StravaTimestampProblem.duplicate }
+            guard offset > previous else { throw StravaTimestampProblem.outOfOrder }
+            previous = offset
+        }
+        if let last = time.data.last, last > Double(elapsed) + 1 {
+            throw StravaTimestampProblem.beyondElapsed(seconds: last - Double(elapsed))
+        }
         var previousDistance = -1.0
         return try time.data.enumerated().map { index, offset in
-            guard offset.isFinite, offset >= 0, offset <= Double(elapsed), offset > previous else {
-                throw ImportProblem("Strava returned invalid or unordered sample timestamps.")
-            }
-            previous = offset
             let location = latlng?.data[index]
             if let location {
                 guard location.count == 2, location.allSatisfy(\.isFinite),

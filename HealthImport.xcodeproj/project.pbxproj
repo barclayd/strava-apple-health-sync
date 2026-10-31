@@ -14,6 +14,7 @@
 		4806CAA5149A09E103056C54 /* AppDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D6A9DEE5B19CDB7A5771F06 /* AppDiagnostics.swift */; };
 		4860741578FA38E76A9A1C14 /* ImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C262200EBBAA5DD539810601 /* ImportView.swift */; };
 		49F3A57178415B329E80F55A /* synthetic-ride.json in Resources */ = {isa = PBXBuildFile; fileRef = 4735C4CD266206B4F0CB1EA3 /* synthetic-ride.json */; };
+		57DCAB1752ED66AFD5DF061E /* StravaDiagnosticView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1168CD5A39430E431DB8DF1B /* StravaDiagnosticView.swift */; };
 		68AAB4394B6228B932F0D07E /* ActivityImportCore in Frameworks */ = {isa = PBXBuildFile; productRef = FE4DD547060BA389190B8566 /* ActivityImportCore */; };
 		691EE6328647DD1DC49FF430 /* synthetic-ride-streams.json in Resources */ = {isa = PBXBuildFile; fileRef = 18A163CFC734489BBEF3895B /* synthetic-ride-streams.json */; };
 		89FB64D9507DA1A9E4A09BF8 /* historic-run.tcx in Resources */ = {isa = PBXBuildFile; fileRef = EDFE0213326298CF348BE8A9 /* historic-run.tcx */; };
@@ -38,6 +39,7 @@
 
 /* Begin PBXFileReference section */
 		0DB5E049828934ED4967CA1C /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		1168CD5A39430E431DB8DF1B /* StravaDiagnosticView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaDiagnosticView.swift; sourceTree = "<group>"; };
 		18A163CFC734489BBEF3895B /* synthetic-ride-streams.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "synthetic-ride-streams.json"; sourceTree = "<group>"; };
 		1D6A9DEE5B19CDB7A5771F06 /* AppDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiagnostics.swift; sourceTree = "<group>"; };
 		38A6B9872F67B36ADA6CDBE5 /* HealthWriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthWriterTests.swift; sourceTree = "<group>"; };
@@ -135,6 +137,7 @@
 				53388221123F5BAFE6CFB7B0 /* Info.plist */,
 				C33EF699E4B7D5C206BF99A0 /* PrivacyInfo.xcprivacy */,
 				B4F2075F4EA410DD2717FBCD /* StravaConnection.swift */,
+				1168CD5A39430E431DB8DF1B /* StravaDiagnosticView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -299,6 +302,7 @@
 				1B99E7841E33CC701A3AB836 /* ImportModel.swift in Sources */,
 				4860741578FA38E76A9A1C14 /* ImportView.swift in Sources */,
 				B57B812B0FF1E49587D86789 /* StravaConnection.swift in Sources */,
+				57DCAB1752ED66AFD5DF061E /* StravaDiagnosticView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -419,7 +423,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -479,7 +483,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

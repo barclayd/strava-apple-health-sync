@@ -11,6 +11,10 @@ actor AppDiagnostics {
         case responseReceived, requestFailed, activitiesLoaded, previewLoaded, previewFailed, connectionForgotten
         case healthPermissionRequested, healthPermissionGranted, duplicateBlocked
         case healthWriteStarted, healthWriteCompleted, importFailed, rollbackCompleted, rollbackFailed
+        case streamTimestampInvalid, streamTimestampDuplicate, streamTimestampOutOfOrder
+        case streamTimestampPastEndWithinSecond, streamTimestampPastEndWithinMinute, streamTimestampPastEnd
+        case streamEndRoundingAccepted
+        case readOnlyCheckStarted, readOnlyCheckCompleted, readOnlyCheckFailed
     }
     private var lines: [String] = []
 

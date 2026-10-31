@@ -22,7 +22,7 @@ Disconnecting or closing the app releases the activity list. Undo removes a sele
 
 ## Local development diagnostics
 
-Debug builds keep up to 200 fixed diagnostic events from the current app session in a protected local cache file, excluded from backups. It contains timestamps, operation stages and HTTP/error status numbers only, with no tokens, URLs, activity identifiers, names, route or Health measurements. An authorised developer can retrieve this file through Xcode’s device tools to diagnose the trial. It is replaced on the next launch and may be removed by iOS. Release builds do not write it. No log is sent to a server by the app.
+Debug builds keep up to 200 fixed diagnostic events from the current app session in a protected local cache file, excluded from backups. It contains timestamps, operation stages, fixed timestamp-validation categories and HTTP/error status numbers only, with no tokens, URLs, activity identifiers, names, route or Health measurements. An authorised developer can retrieve this file through Xcode’s device tools to diagnose the trial. It is replaced on the next launch and may be removed by iOS. Release builds do not write it. No log is sent to a server by the app.
 
 ## Health permissions
 

@@ -51,9 +51,46 @@ private func streams(times: [Double] = [0, 60, 120], heart: [Double] = [100, 0, 
     let changed = fixture.replacingOccurrences(of: "\"distance\":800", with: "\"distance\":850")
     #expect(try StravaJSON.decode(StravaActivity.self, from: Data(changed.utf8)).activity(streams: .empty).id == result.id)
     #expect(throws: ImportProblem.self) { try source.activity(streams: streams(heart: [100])) }
-    #expect(throws: ImportProblem.self) { try source.activity(streams: streams(times: [0, 60, 60])) }
-    #expect(throws: ImportProblem.self) { try source.activity(streams: streams(times: [0, 60, 121])) }
+    #expect(throws: StravaTimestampProblem.duplicate) { try source.activity(streams: streams(times: [0, 60, 60])) }
+    #expect(throws: StravaTimestampProblem.beyondElapsed(seconds: 1.25)) { try source.activity(streams: streams(times: [0, 60, 121.25])) }
+    #expect(throws: StravaTimestampProblem.outOfOrder) { try source.activity(streams: streams(times: [0, 60, 59])) }
+    #expect(throws: StravaTimestampProblem.invalid) { try source.activity(streams: streams(times: [-1, 60, 120])) }
     #expect(throws: ImportProblem.self) { try source.activity(streams: streams(heart: [100, 400, 120])) }
+}
+
+@Test(arguments: [0.25, 1.0])
+func stravaAllowsOneSecondSummaryRoundingWithoutChangingSamples(extra: Double) throws {
+    let source = try StravaJSON.decode(StravaActivity.self, from: Data(fixture.utf8))
+    let result = try source.activity(streams: streams(times: [0, 60, 120 + extra]))
+    #expect(result.duration == 120 + extra)
+    #expect(result.end.timeIntervalSince(result.start) == 120 + extra)
+    #expect(result.points.map { $0.date.timeIntervalSince(result.start) } == [0, 60, 120 + extra])
+    #expect(result.routePoints.count == 3)
+    #expect(result.heartRatePoints.map(\.heartRate) == [100, 120])
+    #expect(result.distance == source.distance)
+    #expect(result.points.allSatisfy { $0.date <= result.end })
+}
+
+@Test func stravaRoundingKeepsPausesAndRejectsLargerTimingProblems() throws {
+    let sourceURL = Bundle.module.url(forResource: "synthetic-paused-ride", withExtension: "json", subdirectory: "Fixtures")!
+    let streamURL = Bundle.module.url(forResource: "synthetic-paused-ride-streams", withExtension: "json", subdirectory: "Fixtures")!
+    let source = try StravaJSON.decode(StravaActivity.self, from: Data(contentsOf: sourceURL))
+    var json = try JSONSerialization.jsonObject(with: Data(contentsOf: streamURL)) as! [String: Any]
+    var time = json["time"] as! [String: Any]
+    var offsets = time["data"] as! [Double]
+    offsets[offsets.count - 1] = Double(source.elapsedTime) + 1
+    time["data"] = offsets; json["time"] = time
+    let result = try source.activity(streams: StravaJSON.decode(StravaStreams.self, from: JSONSerialization.data(withJSONObject: json)))
+    #expect(result.pauses.map { $0.start.timeIntervalSince(result.start) } == [60])
+    #expect(result.pauses.map { $0.end.timeIntervalSince(result.start) } == [240])
+    #expect(result.pausedDuration == 180)
+    #expect(result.duration == 301)
+    let short = try StravaJSON.decode(StravaActivity.self, from: Data(fixture.utf8))
+    for end in [122.0, 300.0, 604_801.0] {
+        #expect(throws: StravaTimestampProblem.beyondElapsed(seconds: end - 120)) {
+            try short.activity(streams: streams(times: [0, 60, end]))
+        }
+    }
 }
 
 private actor TokenMemory: StravaTokenStore {

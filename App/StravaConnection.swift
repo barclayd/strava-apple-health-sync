@@ -200,9 +200,24 @@ enum StravaNetwork {
 
     func historyActivity(id: Int64) async throws -> Activity {
         guard connected, let client else { throw ImportProblem("Connect with Strava first.") }
-        let value = try await client.activity(id: id).1
-        message = nil
-        return value
+        do {
+            let (source, value) = try await client.activity(id: id)
+            if value.duration > Double(source.elapsedTime) { await AppDiagnostics.shared.record(.streamEndRoundingAccepted) }
+            message = nil
+            return value
+        } catch let problem as StravaTimestampProblem {
+            let event: AppDiagnostics.Event
+            switch problem {
+            case .invalid: event = .streamTimestampInvalid
+            case .duplicate: event = .streamTimestampDuplicate
+            case .outOfOrder: event = .streamTimestampOutOfOrder
+            case .beyondElapsed(let seconds):
+                event = seconds <= 1 ? .streamTimestampPastEndWithinSecond
+                    : seconds <= 60 ? .streamTimestampPastEndWithinMinute : .streamTimestampPastEnd
+            }
+            await AppDiagnostics.shared.record(event)
+            throw problem
+        }
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {

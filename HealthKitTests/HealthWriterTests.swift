@@ -59,38 +59,45 @@ final class HealthWriterTests: XCTestCase {
         let streamsURL = try XCTUnwrap(Bundle.main.url(forResource: "synthetic-ride-streams", withExtension: "json"))
         let detail = try String(contentsOf: detailURL, encoding: .utf8).replacingOccurrences(of: "2018-", with: "2015-")
         let source = try StravaJSON.decode(StravaActivity.self, from: Data(detail.utf8))
-        let streams = try StravaJSON.decode(StravaStreams.self, from: Data(contentsOf: streamsURL))
-        var activity = try source.activity(streams: streams)
-        activity.activeEnergy = activity.stravaCalories
-        activity.stravaID = 987654322
-        let record = ImportRecord(activity: activity)
-        let writer = HealthWriter()
-        do {
-            try await writer.save(activity, record: record)
-            let saved = try await query(store, HKObjectType.workoutType(), record)
-            let workout = try XCTUnwrap(saved.first as? HKWorkout)
-            XCTAssertEqual(workout.duration, 120, accuracy: 0.01)
-            XCTAssertEqual(workout.workoutActivityType, .cycling)
-            XCTAssertEqual(workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie()), 20)
-            XCTAssertEqual(workout.statistics(for: HKQuantityType(.cyclingPower))?.maximumQuantity()?.doubleValue(for: .watt()), 200)
-            XCTAssertEqual((workout.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter()), 8)
-            for type in [HKQuantityType(.cyclingPower), HKQuantityType(.cyclingCadence), HKQuantityType(.cyclingSpeed)] {
-                let samples = try await query(store, type, record)
-                XCTAssertEqual(samples.count, 4)
-            }
-            let routes = try await query(store, HKSeriesType.workoutRoute(), record)
-            let route = try XCTUnwrap(routes.first as? HKWorkoutRoute)
-            let locations = try await routeLocations(store, route)
-            XCTAssertEqual(locations.map(\.altitude), [10, 12, 15, 18])
-            XCTAssertEqual(locations.map(\.timestamp), activity.routePoints.map(\.date))
-            XCTAssertTrue(locations.allSatisfy { $0.verticalAccuracy > 0 && $0.horizontalAccuracy > 0 },
-                          "Fitness must receive valid altitude samples to display an elevation profile")
-            XCTAssertEqual(route.metadata?["com.barclayd.healthimport.routeAccuracySource"] as? String,
-                           "Import assumption; recording accuracy unavailable")
-            XCTAssertEqual(route.metadata?["com.barclayd.healthimport.assumedRouteAccuracyMeters"] as? Double, 50)
-            try await writer.undo(record)
-            for type in types { let remaining = try await query(store, type, record); XCTAssertTrue(remaining.isEmpty) }
-        } catch { try? await writer.undo(record); throw error }
+        for extraSecond in [0, 1] {
+            let streamJSON = try String(contentsOf: streamsURL, encoding: .utf8)
+                .replacingOccurrences(of: "[0,40,80,120]", with: "[0,40,80,\(120 + extraSecond)]")
+            let streams = try StravaJSON.decode(StravaStreams.self, from: Data(streamJSON.utf8))
+            var activity = try source.activity(streams: streams)
+            activity.activeEnergy = activity.stravaCalories
+            activity.stravaID = 987654322
+            let record = ImportRecord(activity: activity)
+            let writer = HealthWriter()
+            do {
+                try await writer.save(activity, record: record)
+                let saved = try await query(store, HKObjectType.workoutType(), record)
+                let workout = try XCTUnwrap(saved.first as? HKWorkout)
+                XCTAssertEqual(workout.duration, Double(120 + extraSecond), accuracy: 0.01)
+                XCTAssertEqual(workout.startDate, source.startDate)
+                XCTAssertEqual(workout.endDate, source.startDate.addingTimeInterval(Double(120 + extraSecond)))
+                XCTAssertEqual(workout.workoutActivityType, .cycling)
+                XCTAssertEqual(workout.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity()?.doubleValue(for: .kilocalorie()), 20)
+                XCTAssertEqual(workout.statistics(for: HKQuantityType(.cyclingPower))?.maximumQuantity()?.doubleValue(for: .watt()), 200)
+                XCTAssertEqual((workout.metadata?[HKMetadataKeyElevationAscended] as? HKQuantity)?.doubleValue(for: .meter()), 8)
+                for type in [HKQuantityType(.cyclingPower), HKQuantityType(.cyclingCadence), HKQuantityType(.cyclingSpeed)] {
+                    let samples = try await query(store, type, record)
+                    XCTAssertEqual(samples.count, 4)
+                    XCTAssertEqual(samples.map(\.startDate).sorted(), activity.points.map(\.date))
+                }
+                let routes = try await query(store, HKSeriesType.workoutRoute(), record)
+                let route = try XCTUnwrap(routes.first as? HKWorkoutRoute)
+                let locations = try await routeLocations(store, route)
+                XCTAssertEqual(locations.map(\.altitude), [10, 12, 15, 18])
+                XCTAssertEqual(locations.map(\.timestamp), activity.routePoints.map(\.date))
+                XCTAssertTrue(locations.allSatisfy { $0.verticalAccuracy > 0 && $0.horizontalAccuracy > 0 },
+                              "Fitness must receive valid altitude samples to display an elevation profile")
+                XCTAssertEqual(route.metadata?["com.barclayd.healthimport.routeAccuracySource"] as? String,
+                               "Import assumption; recording accuracy unavailable")
+                XCTAssertEqual(route.metadata?["com.barclayd.healthimport.assumedRouteAccuracyMeters"] as? Double, 50)
+                try await writer.undo(record)
+                for type in types { let remaining = try await query(store, type, record); XCTAssertTrue(remaining.isEmpty) }
+            } catch { try? await writer.undo(record); throw error }
+        }
         #endif
     }
 

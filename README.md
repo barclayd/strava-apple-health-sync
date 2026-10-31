@@ -89,7 +89,9 @@ Physical-device acceptance: with Strava's existing Automatic Uploads setting ena
 
 ### Device diagnostics
 
-Debug builds keep the last 200 diagnostic events from the current app session in `Library/Caches/health-import-diagnostics.log`, protected while the phone is locked and excluded from backups. The log contains fixed event names, timestamps and HTTP/error status numbers only. No response bodies, URLs, tokens, activity identifiers, names, coordinates or Health measurements are logged. Release builds write no diagnostic file.
+A local Debug launch with `--diagnose-strava-offset 25` checks only the 26th activity in the latest 50 summaries, then stops. This Xcode-only screen cannot read or write Health data. It logs fixed validation categories without activity identifiers or sample values. Relaunch without the argument to return to importing.
+
+Debug builds keep the last 200 diagnostic events from the current app session in `Library/Caches/health-import-diagnostics.log`, protected while the phone is locked and excluded from backups. The log contains fixed event names (including timestamp validation reasons), timestamps and HTTP/error status numbers only. No response bodies, URLs, tokens, activity identifiers, names, coordinates or Health measurements are logged. Release builds write no diagnostic file.
 
 Read the log from an authorised connected phone without restarting the app:
 
@@ -132,7 +134,7 @@ API requests use an ephemeral session with no cookies or disk cache, reject redi
 
 `App` contains the SwiftUI interface and the HealthKit writer. All import operations are serialised by the model. A journal entry is persisted before writing to Health, and every sample carries an app-specific transaction marker. On failure, cleanup targets that marker and the app's own Health source. An interrupted entry remains available for retrying cleanup. New imports are blocked while cleanup is pending.
 
-Strava imports use `HKWorkoutBuilder` to produce native cycling statistics from timestamped samples. The Strava elapsed interval is preserved. Energy uses the source total, apportioned across unpaused intervals when necessary; it is not a measured calorie curve. Zero power/cadence/speed samples are retained; zero heart rate is treated as missing. All samples and the workout carry the same undo transaction marker.
+Strava imports use `HKWorkoutBuilder` to produce native cycling statistics from timestamped samples. The Strava elapsed interval is preserved, with a maximum one-second extension when its ordered sample stream ends just beyond the integer summary duration. This keeps every original sample timestamp. Larger overruns, duplicate timestamps and reversed timestamps still pause the import with a specific error. Energy uses the source total, apportioned across unpaused intervals when necessary; it is not a measured calorie curve. Zero power/cadence/speed samples are retained; zero heart rate is treated as missing. All samples and the workout carry the same undo transaction marker.
 
 TCX imports retain HealthKit's deprecated explicit-duration initializer and sample association API because TCX supplies timer duration and an elapsed interval without an exact pause timeline. This preserves both without inventing pauses. Subtracting pauses from the end timestamp would corrupt chronology. Xcode reports the two expected deprecation warnings for that fallback.
 
