@@ -6,17 +6,16 @@ struct StravaTrialSection: View {
     @Bindable var model: ImportModel
     @State private var review = false
     @State private var forget = false
+    @State private var history = false
 
     var body: some View {
         Section {
-            if model.stravaTrialComplete {
-                Label("Trial workout imported", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                Text("Check its date, distance, duration and available samples in Apple Health. Full-history sync comes after this check.")
-                    .foregroundStyle(.secondary)
-            }
             if strava.connected {
                 Label("Connected with Strava", systemImage: "checkmark.circle")
-                DatePicker("Trial date", selection: $strava.trialDate, in: ...Date(), displayedComponents: .date)
+                Button { history = true } label: {
+                    Label("Sync activity history", systemImage: "clock.arrow.circlepath").font(.headline)
+                }.accessibilityIdentifier("syncHistory")
+                DatePicker("Activity date", selection: $strava.trialDate, in: ...Date(), displayedComponents: .date)
                     .onChange(of: strava.trialDate) { _, _ in strava.activities = []; strava.fetched = false }
                 Button { Task { await strava.fetch() } } label: {
                     Label("Find activities", systemImage: "arrow.clockwise")
@@ -35,7 +34,7 @@ struct StravaTrialSection: View {
                                 Text(activity.name).font(.headline)
                                 Text("\(activity.sportType) · \(activity.startDate.formatted(date: .omitted, time: .shortened)) · \((activity.distance / 1000).formatted(.number.precision(.fractionLength(2)))) km")
                                     .font(.subheadline).foregroundStyle(.secondary)
-                                if activity.sport == nil { Text("This trial supports runs and rides").font(.caption) }
+                                if activity.sport == nil { Text("Supports runs and rides").font(.caption) }
                             }
                             Spacer()
                             Image(systemName: "chevron.right").font(.caption)
@@ -58,8 +57,11 @@ struct StravaTrialSection: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
-        } header: { Text("Try one workout") } footer: {
-            Text("Reads your activities, including private activities, directly from Strava. Yesterday is selected for the trial. Choose one workout to review before saving to Health. No activities or Health data are uploaded by this app.")
+        } header: { Text("Strava") } footer: {
+            Text("Reads your activities, including private activities, directly from Strava. Choose a day for an individual import, or review your full history. Choose one workout to review before saving to Health. No activities or Health data are uploaded by this app.")
+        }
+        .sheet(isPresented: $history) {
+            HistorySyncView(strava: strava, model: model)
         }
         .navigationDestination(isPresented: $review) {
             if let activity = model.activities.first { ActivityView(activity: activity, model: model) }

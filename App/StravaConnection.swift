@@ -71,7 +71,11 @@ enum StravaNetwork {
                 guard data.count < maximum else { throw ImportProblem("This activity is too large for the trial.") }
                 data.append(byte)
             }
-            return StravaResponse(status: http.statusCode, data: data)
+            var headers: [String: String] = [:]
+            for name in ["X-RateLimit-Limit", "X-RateLimit-Usage", "X-ReadRateLimit-Limit", "X-ReadRateLimit-Usage"] {
+                headers[name] = http.value(forHTTPHeaderField: name)
+            }
+            return StravaResponse(status: http.statusCode, data: data, headers: headers)
         } catch let error as ImportProblem { await AppDiagnostics.shared.record(.requestFailed); throw error }
         catch {
             await AppDiagnostics.shared.record(.requestFailed, status: (error as? URLError)?.errorCode)
@@ -201,6 +205,16 @@ enum StravaNetwork {
             connected = false; activities = []; fetched = false
             await AppDiagnostics.shared.record(.connectionForgotten)
         } catch { message = error.localizedDescription }
+    }
+
+    func loadHistory(progress: @Sendable (Int) async -> Void) async throws -> [StravaActivity] {
+        guard connected, let client else { throw ImportProblem("Connect with Strava first.") }
+        return try await client.history(before: Date(), progress: progress)
+    }
+
+    func historyActivity(id: Int64) async throws -> Activity {
+        guard connected, let client else { throw ImportProblem("Connect with Strava first.") }
+        return try await client.activity(id: id).1
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {

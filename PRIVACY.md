@@ -8,7 +8,7 @@ The app has no separate account system, backend, analytics, advertising, crash-r
 
 ## Strava connection
 
-You authorise activity read access through Strava, including private activities. The app lists the day you select and loads the workout, calories, elevation, heart rate, route and cycling power/cadence/speed you choose to review. Responses are held in memory; the ephemeral network session has no disk cache or cookies. Requests contain credentials and the identifiers/date filters needed by Strava, never Apple Health data. Strava may collect information about API usage under its own policy.
+You authorise activity read access through Strava, including private activities. The app lists the day you select or your full history, then loads the workout, calories, elevation, heart rate, route and cycling power/cadence/speed you choose to import. History sync fetches one activity at a time after batch review. Responses are held in memory; the ephemeral network session has no disk cache or cookies. Requests contain credentials and the identifiers/date filters needed by Strava, never Apple Health data. Strava may collect information about API usage under its own policy.
 
 Access and refresh tokens are kept in this device’s Keychain, available while unlocked, with syncing and device migration disabled. The personal Debug build also contains an ignored local developer configuration for direct OAuth. That bundle must not be distributed; Release builds exclude the configuration and disable this trial connection.
 
@@ -18,7 +18,7 @@ Access and refresh tokens are kept in this device’s Keychain, available while 
 
 You choose the export files the app can open. Security-scoped access is released after reading. The app reads these files in memory and does not retain a copy. File-size and activity-count limits bound processing.
 
-The app stores only the activity identifier, sport, start date, transaction identifier and completion state in its local import journal. This supports duplicate prevention, undo and recovery if an import is interrupted. The journal uses iOS complete file protection and is excluded from device backups. It is not stored in iCloud Drive or CloudKit.
+The app stores only the activity identifier, sport, start date, transaction identifier and completion state in its local import journal. This supports duplicate prevention, undo and recovery if an import is interrupted. The batch activity list, options, skipped items and progress are held in memory. After relaunch, reloading history uses the durable completed-import entries to skip prior imports; no workout payload cache or server job is created. The journal uses iOS complete file protection and is excluded from device backups. It is not stored in iCloud Drive or CloudKit.
 
 Clearing the preview releases the parsed activities. Undo removes a selected import's Health records and local journal entry. Uninstalling removes the local journal but does not remove already imported Health records. Undo unwanted imports before uninstalling.
 
@@ -29,6 +29,8 @@ Debug builds keep up to 200 fixed diagnostic events from the current app session
 ## Health permissions
 
 The app requests workout read access to detect potential duplicates. It requests write access only for the workout and the distance, heart rate, route and cycling measurements present in the activity being imported. Active energy is requested only when you explicitly choose to interpret the supplied Strava calorie value as active energy; the API does not provide an active/resting split. Permissions can be changed in Settings.
+
+For a batch, the reviewed calorie and pause choices apply to every activity. Imports run sequentially; leaving the app, a request limit or an error pauses the batch. Completed imports remain available for individual Undo.
 
 An empty Health query does not prove there is no existing workout. Denied or limited read permission can hide history. The app explains this and requires a review confirmation before importing.
 

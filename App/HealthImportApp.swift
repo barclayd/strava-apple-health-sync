@@ -11,6 +11,7 @@ import SwiftUI
                 .task { await strava.restore() }
                 .onOpenURL { url in
                     Task {
+                        guard !model.historyRunning else { return }
                         if url.scheme == "healthimport-strava" { await strava.callback(url) }
                         else if url.isFileURL && !strava.busy { await model.load([url]) }
                     }

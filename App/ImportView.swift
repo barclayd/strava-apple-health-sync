@@ -7,6 +7,7 @@ struct ImportView: View {
     @Bindable var strava: StravaConnection
     @State private var showFiles = false
     @State private var showPrivacy = false
+    @State private var showHistoryExample = false
     @State private var undoRecord: ImportRecord?
 
     var body: some View {
@@ -19,7 +20,7 @@ struct ImportView: View {
                             .accessibilityHidden(true)
                         Text("Bring old workouts\ninto Apple Health.")
                             .font(.largeTitle.bold()).fixedSize(horizontal: false, vertical: true)
-                        Text("Connect with Strava, review a workout, then save it to Health. Start with yesterday’s activity.")
+                        Text("Connect with Strava, review your history, then save your workouts to Health.")
                             .font(.body).foregroundStyle(.secondary)
                         Label("Direct to your device. No activity uploads.", systemImage: "lock.shield")
                             .font(.subheadline.weight(.medium)).foregroundStyle(.indigo)
@@ -42,9 +43,13 @@ struct ImportView: View {
                     Button { model.loadCyclingExample(withBreak: true) } label: {
                         Label("Preview a ride with a break", systemImage: "pause.circle")
                     }.accessibilityIdentifier("loadPausedExample")
+                    if model.canImportExample {
+                        Button("Preview synthetic history sync") { showHistoryExample = true }
+                            .accessibilityIdentifier("loadHistoryExample")
+                    }
                   }
                 } header: { Text("Other options") } footer: {
-                    Text("This trial imports one Strava run or ride. Full-history sync will follow after checking the result in Health.")
+                    Text("Import runs and rides directly from Strava, or use an individual TCX file.")
                 }
 
                 if let error = model.journalError {
@@ -114,6 +119,7 @@ struct ImportView: View {
                 }
             }
             .sheet(isPresented: $showPrivacy) { PrivacyView() }
+            .sheet(isPresented: $showHistoryExample) { HistorySyncView(strava: strava, model: model, synthetic: true) }
             .confirmationDialog("Remove this import from Apple Health?", isPresented: Binding(
                 get: { undoRecord != nil }, set: { if !$0 { undoRecord = nil } }), titleVisibility: .visible) {
                     if let record = undoRecord {
@@ -121,8 +127,8 @@ struct ImportView: View {
                     }
                 } message: { Text("Only records created by this app for the selected import will be deleted.") }
         }
-        .overlay { if model.busy || strava.busy { ProgressView(strava.busy ? "Connecting to Strava…" : "Working on device…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20)) } }
-        .disabled(model.busy || strava.busy)
+        .overlay { if (model.busy && !model.historyRunning) || strava.busy { ProgressView(strava.busy ? "Connecting to Strava…" : "Working on device…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20)) } }
+        .disabled((model.busy && !model.historyRunning) || strava.busy)
         .alert("Health Import", isPresented: Binding(get: { model.message != nil || strava.message != nil }, set: { if !$0 { model.message = nil; strava.message = nil } })) {
             Button("OK") { model.message = nil; strava.message = nil }
         } message: { Text(model.message ?? strava.message ?? "") }
@@ -214,7 +220,7 @@ struct ActivityView: View {
                         .font(.headline).padding(.vertical, 6)
                 }
                 .accessibilityIdentifier("importActivity")
-                .disabled(!reviewed || alreadyImported || model.busy || model.journalError != nil || (model.example && !model.canImportExample) || (activity.stravaID != nil && model.stravaTrialComplete))
+                .disabled(!reviewed || alreadyImported || model.busy || model.journalError != nil || (model.example && !model.canImportExample))
             } footer: {
                 Text("Health will list Health Import as the source. You can undo the import from this app’s history.")
             }
@@ -244,7 +250,7 @@ private struct PrivacyView: View {
         NavigationStack {
             List {
                 Section("What this app does") {
-                    Text("Connects directly to Strava to read your selected day’s activities and the workout you choose, including its recorded heart rate and route when available. Preview and duplicate checks run on your device. TCX file import is also available.")
+                    Text("Connects directly to Strava to read the activities you review, including recorded heart rate and routes when available. History sync loads summaries, then fetches each workout in turn. Preview and duplicate checks run on your device. TCX file import is also available.")
                     Text("Writes the selected workout and available distance, heart rate, route, cycling power, cadence, speed and elevation gain to Apple Health with your permission. Strava calories are written as active energy only when you enable that choice.")
                     Text("Keeps a small import history on this device for duplicate protection and undo. That history is excluded from device backups. Original files are not copied into the app.")
                 }

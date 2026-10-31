@@ -3,7 +3,11 @@ import Foundation
 public struct StravaResponse: Sendable {
     public let status: Int
     public let data: Data
-    public init(status: Int, data: Data) { self.status = status; self.data = data }
+    public let headers: [String: String]
+    public init(status: Int, data: Data, headers: [String: String] = [:]) {
+        self.status = status; self.data = data
+        self.headers = headers.reduce(into: [:]) { $0[$1.key.lowercased()] = $1.value }
+    }
 }
 
 public actor StravaClient {
@@ -12,6 +16,7 @@ public actor StravaClient {
     private let store: any StravaTokenStore
     private let transport: Transport
     private var refreshing: Task<StravaToken, Error>?
+    private var budget = StravaRequestBudget()
 
     public init(configuration: StravaConfiguration, store: any StravaTokenStore, transport: @escaping Transport) {
         self.configuration = configuration; self.store = store; self.transport = transport
@@ -48,9 +53,29 @@ public actor StravaClient {
             let response = try await get(path: "/athlete/activities", query: query)
             let activities = try StravaJSON.decode([StravaActivity].self, from: response.data)
             result += activities.filter { $0.startDate >= day.start && $0.startDate < day.end && seen.insert($0.id).inserted }
-            if activities.count < 100 { return result.sorted { $0.startDate > $1.startDate } }
+            if activities.isEmpty { return result.sorted { $0.startDate > $1.startDate } }
         }
         throw ImportProblem("There are too many activities for this one-day trial. No incomplete list was imported.")
+    }
+
+    /// A short page is not necessarily the last page. Stop only at an empty response.
+    public func history(before: Date, progress: @Sendable (Int) async -> Void = { _ in }) async throws -> [StravaActivity] {
+        var result: [StravaActivity] = []
+        var seen = Set<Int64>()
+        for page in 1...500 {
+            try Task.checkCancellation()
+            let response = try await get(path: "/athlete/activities", query: [
+                .init(name: "before", value: String(Int(before.timeIntervalSince1970))),
+                .init(name: "per_page", value: "200"), .init(name: "page", value: String(page))
+            ])
+            let values = try StravaJSON.decode([StravaActivity].self, from: response.data)
+            if values.isEmpty { return result.sorted { $0.startDate > $1.startDate } }
+            let new = values.filter { $0.id > 0 && $0.startDate < before && seen.insert($0.id).inserted }
+            guard !new.isEmpty else { throw ImportProblem("Strava repeated a history page. Reload history later; no incomplete list can be imported.") }
+            result += new
+            await progress(result.count)
+        }
+        throw ImportProblem("This history exceeds the POC’s 100,000-activity limit. No incomplete list can be imported.")
     }
 
     public func activity(id: Int64) async throws -> (StravaActivity, Activity) {
@@ -102,12 +127,15 @@ public actor StravaClient {
     }
 
     private func get(path: String, query: [URLQueryItem] = [], allowMissing: Bool = false) async throws -> StravaResponse {
+        try Task.checkCancellation()
+        try budget.check(at: Date())
         var parts = URLComponents(string: "https://www.strava.com/api/v3" + path)!
         if !query.isEmpty { parts.queryItems = query }
         var request = URLRequest(url: parts.url!)
         request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let response = try await transport(request)
+        budget.observe(response, at: Date())
         if !(allowMissing && response.status == 404) { try Self.check(response) }
         return response
     }
@@ -126,7 +154,7 @@ public actor StravaClient {
         case 403: throw ImportProblem("Strava did not allow this request. Check the app’s access and activity permissions.")
         case 404: throw ImportProblem("This activity is no longer available on Strava.")
         case 429: throw ImportProblem("Strava’s request limit has been reached. Try again later; no automatic retries will run.")
-        default: throw ImportProblem("Strava could not complete the request. Try again later. Nothing has been imported.")
+        default: throw ImportProblem("Strava could not complete the request. Try again later; completed imports are kept.")
         }
     }
 }

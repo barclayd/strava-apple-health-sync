@@ -19,6 +19,7 @@
 		691EE6328647DD1DC49FF430 /* synthetic-ride-streams.json in Resources */ = {isa = PBXBuildFile; fileRef = 18A163CFC734489BBEF3895B /* synthetic-ride-streams.json */; };
 		89FB64D9507DA1A9E4A09BF8 /* historic-run.tcx in Resources */ = {isa = PBXBuildFile; fileRef = EDFE0213326298CF348BE8A9 /* historic-run.tcx */; };
 		8E93A926A2A2D70FEB6C4630 /* HealthWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F4AC1A172C36908505AEA56 /* HealthWriter.swift */; };
+		ABF2EC704FF2CB42D44E2D44 /* HistorySyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA94C04CF3E86D995739C929 /* HistorySyncView.swift */; };
 		B57B812B0FF1E49587D86789 /* StravaConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F2075F4EA410DD2717FBCD /* StravaConnection.swift */; };
 		C398244135EE6BCD3622E521 /* synthetic-paused-ride-streams.json in Resources */ = {isa = PBXBuildFile; fileRef = E288EC5A897494C7091B5BBC /* synthetic-paused-ride-streams.json */; };
 		D278E87BDF44F58DC6268570 /* ActivityImportCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6E0329FA96E5118EE28BA4F4 /* ActivityImportCore */; };
@@ -54,6 +55,7 @@
 		C33EF699E4B7D5C206BF99A0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		CD590944EF3406CEB08E6353 /* HealthImportTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HealthImportTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5FCA8236C22CE6227D08C4D /* ImportModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportModel.swift; sourceTree = "<group>"; };
+		DA94C04CF3E86D995739C929 /* HistorySyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistorySyncView.swift; sourceTree = "<group>"; };
 		E288EC5A897494C7091B5BBC /* synthetic-paused-ride-streams.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "synthetic-paused-ride-streams.json"; sourceTree = "<group>"; };
 		EDFE0213326298CF348BE8A9 /* historic-run.tcx */ = {isa = PBXFileReference; path = "historic-run.tcx"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -126,6 +128,7 @@
 				62A238385CADE0A5C9A8246C /* HealthImport.entitlements */,
 				BF80B1C50A6C692298D07C8D /* HealthImportApp.swift */,
 				5F4AC1A172C36908505AEA56 /* HealthWriter.swift */,
+				DA94C04CF3E86D995739C929 /* HistorySyncView.swift */,
 				D5FCA8236C22CE6227D08C4D /* ImportModel.swift */,
 				C262200EBBAA5DD539810601 /* ImportView.swift */,
 				53388221123F5BAFE6CFB7B0 /* Info.plist */,
@@ -291,6 +294,7 @@
 				4806CAA5149A09E103056C54 /* AppDiagnostics.swift in Sources */,
 				171FE571306F4AA992ED2DB4 /* HealthImportApp.swift in Sources */,
 				8E93A926A2A2D70FEB6C4630 /* HealthWriter.swift in Sources */,
+				ABF2EC704FF2CB42D44E2D44 /* HistorySyncView.swift in Sources */,
 				1B99E7841E33CC701A3AB836 /* ImportModel.swift in Sources */,
 				4860741578FA38E76A9A1C14 /* ImportView.swift in Sources */,
 				B57B812B0FF1E49587D86789 /* StravaConnection.swift in Sources */,
@@ -415,7 +419,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -475,7 +479,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

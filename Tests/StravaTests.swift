@@ -81,7 +81,9 @@ private actor TestServer {
                 {"access_token":"new-access","refresh_token":"new-refresh","expires_at":\(Date().timeIntervalSince1970 + 3600)}
                 """.utf8))
         }
-        return StravaResponse(status: 200, data: Data("[\(fixture)]".utf8))
+        let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let nextPage = query.contains { $0.name == "page" && $0.value != "1" }
+        return StravaResponse(status: 200, data: Data((nextPage ? "[]" : "[\(fixture)]").utf8))
     }
 }
 
