@@ -1,0 +1,14 @@
+.DS_Store
+.build/
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcarchive
+*.ipa
+# Never commit personal exports. Synthetic fixtures live under Tests/Fixtures.
+PrivateExports/
+*.fit
+*.gpx
+*.zip
+
