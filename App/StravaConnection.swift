@@ -78,6 +78,7 @@ enum StravaNetwork {
             return StravaResponse(status: http.statusCode, data: data, headers: headers)
         } catch let error as ImportProblem { await AppDiagnostics.shared.record(.requestFailed); throw error }
         catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled { throw CancellationError() }
             await AppDiagnostics.shared.record(.requestFailed, status: (error as? URLError)?.errorCode)
             throw ImportProblem("The connection to Strava was interrupted. Check your internet connection and try again.")
         }
@@ -109,17 +110,24 @@ enum StravaNetwork {
         #endif
     }
 
+    init(client: StravaClient) {
+        self.client = client
+        super.init()
+    }
+
     func restore() async {
         await AppDiagnostics.shared.record(.appStarted)
         guard let client else { return }
         do {
             connected = try await client.isConnected()
+            message = nil
             if connected { await AppDiagnostics.shared.record(.connectionRestored) }
         } catch { await AppDiagnostics.shared.record(.connectionRestoreFailed); message = error.localizedDescription }
     }
 
     func connect() {
         guard !busy, !authorising, let configuration else { return }
+        message = nil
         let state = UUID().uuidString + UUID().uuidString
         pendingState = state; authorising = true
         Task { await AppDiagnostics.shared.record(.authorisationStarted) }
@@ -160,7 +168,7 @@ enum StravaNetwork {
             await AppDiagnostics.shared.record(.callbackValidated)
             try await client.connect(code: code)
             await AppDiagnostics.shared.record(.connectionSaved)
-            connected = true
+            connected = true; message = nil
             busy = false
         } catch { await AppDiagnostics.shared.record(.authorisationFailed); busy = false; message = error.localizedDescription }
     }
@@ -178,19 +186,23 @@ enum StravaNetwork {
         do {
             cancel()
             try await client.forgetConnection()
-            connected = false
+            connected = false; message = nil
             await AppDiagnostics.shared.record(.connectionForgotten)
         } catch { message = error.localizedDescription }
     }
 
-    func loadHistory(progress: @Sendable (Int) async -> Void) async throws -> [StravaActivity] {
+    func activityPage(query: ActivityQuery, page: Int, size: Int) async throws -> [StravaActivity] {
         guard connected, let client else { throw ImportProblem("Connect with Strava first.") }
-        return try await client.history(before: Date(), progress: progress)
+        let values = try await client.activityPage(query: query, page: page, size: size)
+        message = nil
+        return values
     }
 
     func historyActivity(id: Int64) async throws -> Activity {
         guard connected, let client else { throw ImportProblem("Connect with Strava first.") }
-        return try await client.activity(id: id).1
+        let value = try await client.activity(id: id).1
+        message = nil
+        return value
     }
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {

@@ -34,22 +34,14 @@ private actor PagedHistoryServer {
     }
 }
 
-@Test func historyContinuesAfterShortPagesAndDeduplicatesRepeatedRows() async throws {
+@Test func activityListingFetchesOnlyTheRequestedBoundedPage() async throws {
     let server = PagedHistoryServer([[1], [1, 2], []])
     let client = StravaClient(configuration: StravaConfiguration(clientID: "123", clientSecret: "test", callbackHost: "example.com"),
                               store: HistoryTokens(), transport: server.send)
-    let result = try await client.history(before: Date(timeIntervalSince1970: 1_900_000_000))
-    #expect(Set(result.map(\.id)) == [1, 2])
-    #expect(await server.requestedPages == [1, 2, 3])
-    #expect(Set(await server.beforeValues).count == 1)
-}
-
-@Test func repeatedHistoryPageFailsWithoutReturningAnIncompleteList() async throws {
-    let server = PagedHistoryServer([[1], [1]])
-    let client = StravaClient(configuration: StravaConfiguration(clientID: "123", clientSecret: "test", callbackHost: "example.com"),
-                              store: HistoryTokens(), transport: server.send)
-    await #expect(throws: ImportProblem.self) { try await client.history(before: Date()) }
-    #expect(await server.requestedPages == [1, 2])
+    let query = ActivityQuery(before: Date(timeIntervalSince1970: 1_900_000_000))
+    let values = try await client.activityPage(query: query, page: 1, size: 5)
+    #expect(values.map(\.id) == [1])
+    #expect(await server.requestedPages == [1])
 }
 
 @Test func sharedQuotaLeavesHeadroomAndUsesUTCResetBoundaries() throws {

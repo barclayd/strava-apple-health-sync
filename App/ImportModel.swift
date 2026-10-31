@@ -8,6 +8,7 @@ import ActivityImportCore
     var message: String?
     var historyRunning = false
     var journalError: String?
+    private var importedIDs: Set<String> = []
     private var journal: ImportJournal?
     private let health = HealthWriter()
 
@@ -17,6 +18,7 @@ import ActivityImportCore
                                                          appropriateFor: nil, create: true).appendingPathComponent("ImportJournal")
             journal = try ImportJournal(directory: directory)
             records = journal!.records
+            importedIDs = Set(records.filter(\.completed).map(\.activityID))
         } catch {
             journalError = "Import history could not be opened. Imports are disabled to protect against duplicates. Restart after unlocking your device."
         }
@@ -30,12 +32,14 @@ import ActivityImportCore
         #endif
     }
 
+    func hasImported(stravaID: Int64) -> Bool { importedIDs.contains("strava-v1-\(stravaID)") }
+
     func saveReviewed(_ activity: Activity, synthetic: Bool = false) async throws -> HistoryImportOutcome {
         guard !busy else { throw ImportProblem("Another import is still running.") }
         guard let journal else { throw ImportProblem(journalError ?? "Import history is unavailable.") }
         guard !synthetic || canImportExample else { throw ImportProblem("Synthetic imports only run in a simulator.") }
         busy = true
-        defer { busy = false; records = journal.records }
+        defer { busy = false; records = journal.records; importedIDs = Set(records.filter(\.completed).map(\.activityID)) }
         do {
             guard !journal.records.contains(where: { !$0.completed }) else {
                 throw ImportProblem("An earlier import was interrupted. Open Import history from the menu and undo it first.")
@@ -74,7 +78,7 @@ import ActivityImportCore
     func undo(_ record: ImportRecord) async {
         guard !busy, let journal else { return }
         busy = true
-        defer { busy = false; records = journal.records }
+        defer { busy = false; records = journal.records; importedIDs = Set(records.filter(\.completed).map(\.activityID)) }
         do {
             try await health.undo(record)
             try journal.remove(record.id)

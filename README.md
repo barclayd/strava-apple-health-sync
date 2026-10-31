@@ -14,14 +14,14 @@ Currently supported:
 
 * Native Strava sign-in, with a system browser fallback and validated OAuth state/callback/scope
 * Direct activity reads with `activity:read_all`, Keychain token storage and coordinated token refresh
-* Automatic history loading after connection, paginated through an empty page with deduplication and a fixed scan cutoff
-* All-history, individual and inclusive local-date selection with one import button, progress, automatic duplicate skipping and pause/resume
+* One five-summary request after connection; recent rides grouped by month, with direct month/year selection and replacement pages
+* All-history, individual and inclusive local-date selection with one import button, progress counts, automatic duplicate skipping and pause/resume
 * Shared Strava quota headroom: pauses at 90% of the advertised short-term or daily budget; no retry loop
 * Original timestamps, distance, recorded heart-rate samples and GPS route
 * Cycling power (with an estimated-power marker when applicable), cadence, speed, elevation gain and indoor/outdoor status from Strava
 * Estimated pause/resume events from Strava movement samples and stationary recording gaps, enabled automatically
 * Available Strava calories saved as active energy automatically
-* A fixed import button showing the selected count; no additional review checkbox or confirmation sheet. Apple’s required Health permission sheet remains
+* A fixed import button showing the selected scope or individual count; no additional review checkbox or confirmation sheet. Apple’s required Health permission sheet remains
 * Stable per-activity identifiers, a persistent import journal and conservative matching against visible Health workouts
 * Undo for this app's workout, route and associated samples, including interrupted imports
 * Clearly labelled synthetic 2018 rides, available only with Debug simulator launch arguments
@@ -29,8 +29,8 @@ Currently supported:
 Limits:
 
 * The app UI uses Strava only. The TCX parser remains in the core package for development; file opening, FIT, GPX, ZIP archives, other sports, ongoing background sync and edited-workout reconciliation are outside this flow
-* History scans are limited to 500 pages / 100,000 activities. A failed, cancelled or capped scan cannot start an incomplete batch
-* History summaries and batch outcomes remain in memory. After closing or restarting, reload history and select again; completed journal entries are skipped. Unfinished transactions require scoped Undo before resuming
+* History import streams pages of at most 50 summaries and one detailed activity at a time. It stops on an empty page, including after short pages; a failed request pauses at that page or activity. A 10,000-page guard stops pathological responses without claiming completion
+* Browsing retains at most five summaries, not the full archive. Import retains one page, bounded recent-page identifiers and scalar progress; individual choices retain IDs only. The protected undo journal still stores minimal identifiers and timestamps for completed imports. After relaunch, a new import skips those IDs before fetching details. Unfinished transactions require scoped Undo before resuming
 * Keep the app open for a batch. Leaving the foreground requests a pause after the current transaction. API errors and quota limits pause the batch; resume manually when resolved. The shared Stitch app may consume quota concurrently
 * Strava does not provide Garmin's original timer events. Full-resolution movement samples and stationary recording gaps can estimate pauses; these are imported automatically. Health receives real pause/resume events without shifting sample timestamps. Workout duration excludes enabled pauses; Strava moving time remains separate. Fitness controls graph presentation
 * Missing streams produce a summary-only import. No heart-rate or route samples are invented
@@ -60,16 +60,24 @@ The redirect is `healthimport-strava://YOUR_CALLBACK_HOST/oauth/callback`. It us
 
 ### Import activities
 
-1. Tap **Connect with Strava** and approve activity read access. The app loads your history automatically; this does not write to Health
-2. Choose **All history**, **Individual** or **Date range**. Individual mode allows multiple selections; date ranges include both complete local calendar days. The matching rides appear on the same screen
-3. Tap the bottom **Import … rides** button. Import starts immediately, with no extra app confirmation. Grant Apple’s required Health permissions when prompted. Available Strava calories are always imported as active energy, and detected pauses preserve the original timestamps
+1. Tap **Connect with Strava** and approve activity read access. The app requests only the latest five activity summaries; this does not write to Health
+2. Choose **All history**, **Individual** or **Date range**. Individual mode opens the latest month: tap the month heading to jump directly to a month/year, or use its arrows. **Older / Newer** replaces the visible page with up to five rides. Selected IDs persist across pages/months. Date ranges include both complete local days and filter on Strava before paging
+3. Tap **Import all history**, **Import date range** or **Import … rides**. Import starts immediately, with no extra app confirmation. Grant Apple’s required Health permissions when prompted. Available Strava calories are always imported as active energy, and detected pauses preserve the original timestamps
 4. Keep the app open. **Pause import** finishes the current transaction first. Network, permission and quota errors pause automatically; **Resume import** retries the pending activity. **Skip this activity** omits a failed item for this session
-5. Existing journal entries and matching visible Health workouts are skipped automatically. Reopening loads history again and uses the protected journal to avoid repeating completed writes
+5. Existing journal entries and matching visible Health workouts are skipped automatically. All-history and date-range imports fetch each small page only when needed and release it before the next. Counts report actual progress, without claiming to know an unfetched total
 6. Open **Options → Import history** for per-workout **Undo import** or interrupted-import cleanup. **Options → Privacy** explains local processing and permissions
 
 The importer supports runs as well as rides. Unsupported sports are left out. No batch starts just by connecting, loading or changing the selection.
 
-For synthetic UI review, launch a Debug simulator build with `--preview`. Its connect button opens six invented rides without OAuth or Strava requests. `--preview-connected` opens the list directly. These flags have no effect on physical devices or Release builds; demo imports write only to simulator Health.
+For synthetic UI review, launch a Debug simulator build with `--preview`. Its connect button browses eighteen invented rides, five at a time without OAuth or Strava requests. `--preview-connected` opens the list directly. These flags have no effect on physical devices or Release builds; demo imports write only to simulator Health.
+
+### Browsing and loading decisions
+
+The main screen shows up to five recent rides with month headings. The month/year picker appears only in Individual mode; compact date pickers appear in Date range mode. This follows [NN/g’s progressive-disclosure guidance](https://www.nngroup.com/articles/progressive-disclosure/) and [Apple’s picker guidance](https://developer.apple.com/design/human-interface-guidelines/pickers). It avoids a scrolling archive and lets someone jump fifteen years without tapping through every month.
+
+[Strava’s list endpoint](https://developers.strava.com/docs/reference/#api-Activities-getLoggedInAthleteActivities) supports date bounds, page numbers and page sizes. Browsing requests five summaries and replaces them on navigation. Each filter change cancels its predecessor and uses a generation check so late data or errors cannot overwrite the active period. Cancellation is not presented as a broken connection. Successful sign-in, restoration and activity reads clear stale connection errors.
+
+Full-history import uses a fixed upper time bound, pages of 50, one detailed workout at a time and progress counts. There is no up-front full-history scan or accumulated outcome list. Loading/import progress is indeterminate until finished, following [Apple’s loading guidance](https://developer.apple.com/design/human-interface-guidelines/loading). Pause/resume keeps the pending page and activity; after relaunch, the small existing journal provides duplicate protection. The journal contains minimal undo metadata, not a cache of activities or streams. Import history itself displays 20 journal records per page.
 
 ### Avoiding a Strava–Health sync loop
 

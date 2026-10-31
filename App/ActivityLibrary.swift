@@ -2,19 +2,28 @@ import SwiftUI
 import ActivityImportCore
 
 @MainActor @Observable final class ActivityLibrary {
+    static let previewSize = 5
     var activities: [StravaActivity] = []
     var selection = ActivitySelection()
+    var month = Date()
     var loaded = false
     var loading = false
     var running = false
     var pauseRequested = false
-    var scannedCount = 0
-    var error: String?
-    var outcomes: [Int64: HistoryImportOutcome] = [:]
-    var currentName: String?
+    var browsePage = 1
+    var canBrowseOlder = false
+    var browseError: String?
+    var importError: String?
+    var importedCount = 0
+    var skippedCount = 0
+    var currentMonth: Date?
+    var finished = false
     var previewConnected = false
-    private(set) var queue: HistoryImportQueue?
+    var matchedVisibleIDs: Set<Int64> = []
+    private(set) var importer: StreamingHistoryImport?
     private var loadTask: Task<Void, Never>?
+    private var generation = 0
+    private var browseQuery = ActivityQuery(before: Date())
 
     static var preview: Bool {
         #if DEBUG && targetEnvironment(simulator)
@@ -23,123 +32,144 @@ import ActivityImportCore
         false
         #endif
     }
-
-    var selected: [StravaActivity] { selection.activities(in: activities) }
-    var visible: [StravaActivity] { selection.scope == .dates ? selected : activities }
+    static var now: Date { preview ? Date(timeIntervalSince1970: 1_530_316_800) : Date() }
     var active: Bool { loading || running }
-    var finished: Bool { queue != nil && queue?.next == nil }
-    var hasPending: Bool { queue?.next != nil }
+    var hasPending: Bool { importer != nil && !finished }
+    var canSkip: Bool { importer?.nextID != nil }
 
-    func pending(records: [ImportRecord]) -> [StravaActivity] {
-        let imported = Set(records.filter(\.completed).map(\.activityID))
-        return selected.filter {
-            !imported.contains("strava-v1-\($0.id)") && outcomes[$0.id] != .duplicate
-        }
+    init() {
+        month = Self.now
+        selection = ActivitySelection(now: Self.now)
     }
 
     func selectionChanged() {
         guard !running else { return }
-        queue = nil; outcomes = [:]; error = nil
+        importer = nil; importedCount = 0; skippedCount = 0; finished = false
+        importError = nil; currentMonth = nil
     }
 
     func clear() {
-        loadTask?.cancel()
-        activities = []; loaded = false; selection = ActivitySelection()
+        generation += 1; loadTask?.cancel(); loadTask = nil
+        activities = []; loaded = false; loading = false; selection = ActivitySelection(now: Self.now)
+        browseError = nil; matchedVisibleIDs = []
         selectionChanged()
     }
 
-    func load(strava: StravaConnection, model: ImportModel) {
-        guard !active, !model.busy else { return }
-        loading = true; error = nil; scannedCount = 0; model.historyRunning = true
+    func load(strava: StravaConnection, model: ImportModel, page: Int = 1, reset: Bool = true) {
+        guard !running, !model.busy else { return }
+        generation += 1
+        let request = generation
+        loadTask?.cancel()
+        if reset {
+            switch selection.scope {
+            case .all: browseQuery = ActivityQuery(before: Self.now)
+            case .individual: browseQuery = .month(containing: month)
+            case .dates: browseQuery = .days(from: selection.start, through: selection.end)
+            }
+        }
+        let query = browseQuery
+        loading = true; browseError = nil; activities = []; matchedVisibleIDs = []
+        model.message = nil; strava.message = nil; model.historyRunning = true
         loadTask = Task { @MainActor in
-            defer { loading = false; model.historyRunning = false; loadTask = nil }
+            defer {
+                if generation == request { loading = false; model.historyRunning = false; loadTask = nil }
+            }
             do {
-                let values: [StravaActivity]
-                if Self.preview { values = try Self.examples().map(\.0) }
-                else {
-                    values = try await strava.loadHistory { count in
-                        await MainActor.run { self.scannedCount = count }
-                    }
-                }
+                let values = try await self.page(query: query, number: page, size: Self.previewSize, strava: strava)
                 try Task.checkCancellation()
+                guard generation == request else { return }
                 activities = values.filter { $0.sport != nil }.sorted { $0.startDate > $1.startDate }
-                loaded = true
-                if Self.preview, let first = activities.last?.startDate, let last = activities.first?.startDate {
-                    selection.start = first; selection.end = last
-                }
-                selectionChanged()
+                browsePage = page; canBrowseOlder = !values.isEmpty; loaded = true
+                if selection.scope == .all, let latest = activities.first { month = latest.startDate }
             } catch {
-                self.error = Task.isCancelled ? "Loading paused. Tap retry when you’re ready." : error.localizedDescription
+                guard generation == request, !Task.isCancelled else { return }
+                browseError = error.localizedDescription
             }
         }
     }
 
     func pause() {
-        loadTask?.cancel()
-        queue?.pause()
+        if loading {
+            loadTask?.cancel(); loading = false
+            browseError = "Loading paused. Retry when you’re ready."
+        }
+        importer?.pause()
         if running { pauseRequested = true }
     }
 
     func run(strava: StravaConnection, model: ImportModel) async {
         guard !active, !model.busy, model.journalError == nil, !model.records.contains(where: { !$0.completed }) else { return }
-        if queue == nil || finished {
-            let values = pending(records: model.records)
-            guard !values.isEmpty else { return }
-            queue = HistoryImportQueue(activities: values)
-            outcomes = [:]
+        if importer == nil {
+            switch selection.scope {
+            case .all: importer = StreamingHistoryImport(query: ActivityQuery(before: Self.now))
+            case .dates: importer = StreamingHistoryImport(query: .days(from: selection.start, through: selection.end))
+            case .individual:
+                guard !selection.ids.isEmpty else { return }
+                importer = StreamingHistoryImport(ids: selection.ids)
+            }
         }
-        guard let queue else { return }
-        running = true; pauseRequested = false; error = nil; model.historyRunning = true
+        guard let importer, !finished else { return }
+        running = true; pauseRequested = false; importError = nil
+        model.message = nil; strava.message = nil; model.historyRunning = true
         let previousIdle = UIApplication.shared.isIdleTimerDisabled
         UIApplication.shared.isIdleTimerDisabled = true
         defer {
-            running = false; currentName = nil; model.historyRunning = false
+            running = false; model.historyRunning = false
             UIApplication.shared.isIdleTimerDisabled = previousIdle
         }
         do {
-            try await queue.run(completedIDs: Set(model.records.filter(\.completed).map(\.activityID)),
-                useCalories: true, usePauses: true,
+            try await importer.run(
+                loadPage: { query, page, size in try await self.page(query: query, number: page, size: size, strava: strava) },
+                isImported: { id in model.hasImported(stravaID: id) },
                 fetch: { id in
-                    if Self.preview {
-                        guard let value = try Self.examples().first(where: { $0.0.id == id })?.1 else {
-                            throw ImportProblem("The example activity is unavailable.")
-                        }
-                        return value
-                    }
+                    if Self.preview { return try Self.exampleActivity(id: id) }
                     return try await strava.historyActivity(id: id)
                 },
                 save: { try await model.saveReviewed($0, synthetic: Self.preview) },
-                changed: { self.outcomes = queue.outcomes; self.currentName = queue.next?.name })
-        } catch { self.error = error.localizedDescription }
-        outcomes = queue.outcomes
+                changed: { self.updateProgress() })
+        } catch { importError = error.localizedDescription }
+        updateProgress()
     }
 
     func skip() {
         guard !running else { return }
-        queue?.skipNext(); outcomes = queue?.outcomes ?? [:]; error = nil
+        importer?.skip(); updateProgress(); importError = nil
     }
 
-    // Explicit simulator launch arguments only. No demo entry or synthetic writes on a phone.
-    private static func examples() throws -> [(StravaActivity, Activity)] {
-        let rides = [
-            ("Sunday by the river", "2018-06-24T08:00:00Z"),
-            ("The long way home", "2018-06-21T17:30:00Z"),
-            ("Coffee stop loop", "2018-06-17T09:00:00Z"),
-            ("Before the city wakes", "2018-06-12T06:15:00Z"),
-            ("A little further out", "2018-05-27T08:00:00Z"),
-            ("Into the hills", "2018-05-12T09:30:00Z")
-        ]
-        return try rides.enumerated().map { index, ride in
-            let name = index == 2 ? "synthetic-paused-ride" : "synthetic-ride"
-            guard let detail = Bundle.main.url(forResource: name, withExtension: "json"),
-                  let streams = Bundle.main.url(forResource: name + "-streams", withExtension: "json") else {
-                throw ImportProblem("The example activities are unavailable.")
-            }
-            var json = try JSONSerialization.jsonObject(with: Data(contentsOf: detail)) as! [String: Any]
-            json["id"] = 9_100_000_001 + index; json["name"] = ride.0; json["start_date"] = ride.1
-            let source = try StravaJSON.decode(StravaActivity.self, from: JSONSerialization.data(withJSONObject: json))
-            let points = try StravaJSON.decode(StravaStreams.self, from: Data(contentsOf: streams))
-            return (source, try source.activity(streams: points))
-        }
+    private func updateProgress() {
+        guard let importer else { return }
+        importedCount = importer.imported; skippedCount = importer.skipped
+        finished = importer.finished; currentMonth = importer.currentDate
+        if let result = importer.lastResult, result.outcome == .duplicate,
+           activities.contains(where: { $0.id == result.id }) { matchedVisibleIDs.insert(result.id) }
+    }
+
+    private func page(query: ActivityQuery, number: Int, size: Int, strava: StravaConnection) async throws -> [StravaActivity] {
+        if !Self.preview { return try await strava.activityPage(query: query, page: number, size: size) }
+        // Only 18 invented summaries in this simulator fixture, filtered before paging like the API.
+        let values = try (0..<18).map { try Self.exampleSource(index: $0) }.filter { query.contains($0.startDate) }
+        return Array(values.dropFirst((number - 1) * size).prefix(size))
+    }
+
+    private static func exampleSource(index: Int) throws -> StravaActivity {
+        let names = ["Sunday by the river", "The long way home", "Coffee stop loop", "Before the city wakes", "A little further out", "Into the hills"]
+        let dates = ["2018-06-24T08:00:00Z", "2018-06-21T17:30:00Z", "2018-06-17T09:00:00Z", "2018-06-12T06:15:00Z", "2018-05-27T08:00:00Z", "2018-05-12T09:30:00Z"]
+        let original = index % 6
+        let name = original == 2 ? "synthetic-paused-ride" : "synthetic-ride"
+        guard let detail = Bundle.main.url(forResource: name, withExtension: "json") else { throw ImportProblem("Example unavailable.") }
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: detail)) as! [String: Any]
+        let base = ISO8601DateFormatter().date(from: dates[original])!
+        let date = Calendar(identifier: .gregorian).date(byAdding: .month, value: -(index / 6) * 2, to: base)!
+        json["id"] = 9_100_000_001 + index; json["name"] = names[original]
+        json["start_date"] = date.ISO8601Format()
+        return try StravaJSON.decode(StravaActivity.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+
+    private static func exampleActivity(id: Int64) throws -> Activity {
+        let index = Int(id - 9_100_000_001)
+        guard (0..<18).contains(index) else { throw ImportProblem("Example unavailable.") }
+        let name = index % 6 == 2 ? "synthetic-paused-ride" : "synthetic-ride"
+        guard let streams = Bundle.main.url(forResource: name + "-streams", withExtension: "json") else { throw ImportProblem("Example unavailable.") }
+        return try exampleSource(index: index).activity(streams: StravaJSON.decode(StravaStreams.self, from: Data(contentsOf: streams)))
     }
 }

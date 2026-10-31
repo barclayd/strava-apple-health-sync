@@ -58,24 +58,22 @@ public actor StravaClient {
         throw ImportProblem("There are too many activities for this one-day trial. No incomplete list was imported.")
     }
 
-    /// A short page is not necessarily the last page. Stop only at an empty response.
-    public func history(before: Date, progress: @Sendable (Int) async -> Void = { _ in }) async throws -> [StravaActivity] {
-        var result: [StravaActivity] = []
-        var seen = Set<Int64>()
-        for page in 1...500 {
-            try Task.checkCancellation()
-            let response = try await get(path: "/athlete/activities", query: [
-                .init(name: "before", value: String(Int(before.timeIntervalSince1970))),
-                .init(name: "per_page", value: "200"), .init(name: "page", value: String(page))
-            ])
-            let values = try StravaJSON.decode([StravaActivity].self, from: response.data)
-            if values.isEmpty { return result.sorted { $0.startDate > $1.startDate } }
-            let new = values.filter { $0.id > 0 && $0.startDate < before && seen.insert($0.id).inserted }
-            guard !new.isEmpty else { throw ImportProblem("Strava repeated a history page. Reload history later; no incomplete list can be imported.") }
-            result += new
-            await progress(result.count)
+    /// Exactly one bounded request. Callers own paging and must not accumulate the archive.
+    public func activityPage(query: ActivityQuery, page: Int, size: Int) async throws -> [StravaActivity] {
+        guard page > 0, (1...50).contains(size), query.before.timeIntervalSince1970.isFinite,
+              query.after.map({ $0 < query.before }) ?? true else {
+            throw ImportProblem("Choose a valid activity period.")
         }
-        throw ImportProblem("This history exceeds the POC’s 100,000-activity limit. No incomplete list can be imported.")
+        var parameters = [URLQueryItem(name: "before", value: String(Int(query.before.timeIntervalSince1970))),
+                          .init(name: "per_page", value: String(size)), .init(name: "page", value: String(page))]
+        // Strava's after bound is exclusive; include the first second of the selected local day.
+        if let after = query.after { parameters.append(.init(name: "after", value: String(Int(after.timeIntervalSince1970) - 1))) }
+        let response = try await get(path: "/athlete/activities", query: parameters)
+        let values = try StravaJSON.decode([StravaActivity].self, from: response.data)
+        guard values.count <= size, values.allSatisfy({ $0.id > 0 && query.contains($0.startDate) }) else {
+            throw ImportProblem("Strava returned activities outside the requested page. Try again later.")
+        }
+        return values
     }
 
     public func activity(id: Int64) async throws -> (StravaActivity, Activity) {
@@ -150,7 +148,7 @@ public actor StravaClient {
     private static func check(_ response: StravaResponse) throws {
         switch response.status {
         case 200..<300: return
-        case 401: throw ImportProblem("Your Strava connection is no longer valid. Forget this connection and connect again.")
+        case 401: throw ImportProblem("Your Strava connection is no longer valid. Disconnect Strava from the Options menu, then connect again.")
         case 403: throw ImportProblem("Strava did not allow this request. Check the app’s access and activity permissions.")
         case 404: throw ImportProblem("This activity is no longer available on Strava.")
         case 429: throw ImportProblem("Strava’s request limit has been reached. Try again later; no automatic retries will run.")
