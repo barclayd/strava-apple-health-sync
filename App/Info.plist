@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleDisplayName</key><string>Health Import</string>
+    <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>UILaunchScreen</key><dict/>
+    <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
+    <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+    <key>NSHealthShareUsageDescription</key><string>Check existing workouts on this device to help avoid importing the same activity twice. Your Health data is never uploaded by this app.</string>
+    <key>NSHealthUpdateUsageDescription</key><string>Save only the workouts, distance, heart rate and routes you choose to Apple Health. You can undo imports made by this app.</string>
+    <key>ITSAppUsesNonExemptEncryption</key><false/>
+    <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+    <key>CFBundleDocumentTypes</key><array><dict>
+        <key>CFBundleTypeName</key><string>TCX activity</string>
+        <key>LSHandlerRank</key><string>Alternate</string>
+        <key>LSItemContentTypes</key><array><string>com.garmin.tcx</string></array>
+    </dict></array>
+    <key>UTImportedTypeDeclarations</key><array><dict>
+        <key>UTTypeIdentifier</key><string>com.garmin.tcx</string>
+        <key>UTTypeDescription</key><string>Training Center XML</string>
+        <key>UTTypeConformsTo</key><array><string>public.xml</string></array>
+        <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>tcx</string></array></dict>
+    </dict></array>
+</dict></plist>

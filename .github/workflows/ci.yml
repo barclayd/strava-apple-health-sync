@@ -1,0 +1,15 @@
+name: Swift
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test import logic
+        run: swift test
+      - name: Build iOS app
+        run: xcodebuild -project HealthImport.xcodeproj -scheme HealthImport -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
