@@ -14,25 +14,44 @@ public struct TrackPoint: Sendable, Equatable {
     public let longitude: Double?
     public let altitude: Double?
     public let heartRate: Double?
+    public var power: Double? = nil
+    public var cadence: Double? = nil
+    public var speed: Double? = nil
+    public var moving: Bool? = nil
+    public var cumulativeDistance: Double? = nil
 }
 
 public struct Activity: Identifiable, Sendable {
     public let sport: Sport
     public let start: Date
     public let end: Date
-    /// TCX lap timer duration, which may exclude pauses. Never substitute moving time.
+    /// TCX timer duration or Strava elapsed time. Moving time is not a recording timer.
     public let duration: TimeInterval
     public let distance: Double
     public let points: [TrackPoint]
+    public var stravaID: Int64? = nil
+    public var stravaCalories: Double? = nil
+    public var activeEnergy: Double? = nil
+    public var elevationGain: Double? = nil
+    public var indoor: Bool? = nil
+    public var powerIsEstimated = false
+    /// Estimated from Strava movement samples and stationary recording gaps, not device timer events.
+    public var pauses: [DateInterval] = []
+    public var pausedDuration: TimeInterval { pauses.reduce(0) { $0 + $1.duration } }
+    public var workoutDuration: TimeInterval { duration - pausedDuration }
 
     /// Stable across file names, whitespace, time-zone notation and measurement corrections.
     public var id: String {
+        if let stravaID { return "strava-v1-\(stravaID)" }
         let input = "tcx-v1|\(sport.rawValue)|\(Int64((start.timeIntervalSince1970 * 1000).rounded()))"
         return SHA256.hash(data: Data(input.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     public var routePoints: [TrackPoint] { points.filter { $0.latitude != nil && $0.longitude != nil } }
     public var heartRatePoints: [TrackPoint] { points.filter { $0.heartRate != nil } }
+    public var powerPoints: [TrackPoint] { points.filter { $0.power != nil } }
+    public var cadencePoints: [TrackPoint] { points.filter { $0.cadence != nil } }
+    public var speedPoints: [TrackPoint] { points.filter { $0.speed != nil } }
 }
 
 public enum DuplicatePolicy {

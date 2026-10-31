@@ -12,18 +12,11 @@
     <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
     <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
     <key>NSHealthShareUsageDescription</key><string>Check existing workouts on this device to help avoid importing the same activity twice. Your Health data is never uploaded by this app.</string>
-    <key>NSHealthUpdateUsageDescription</key><string>Save only the workouts, distance, heart rate and routes you choose to Apple Health. You can undo imports made by this app.</string>
+    <key>NSHealthUpdateUsageDescription</key><string>Save the workouts and available distance, heart rate, routes, cycling measurements and active energy you select. You can undo imports made by this app.</string>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
-    <key>LSSupportsOpeningDocumentsInPlace</key><true/>
-    <key>CFBundleDocumentTypes</key><array><dict>
-        <key>CFBundleTypeName</key><string>TCX activity</string>
-        <key>LSHandlerRank</key><string>Alternate</string>
-        <key>LSItemContentTypes</key><array><string>com.garmin.tcx</string></array>
-    </dict></array>
-    <key>UTImportedTypeDeclarations</key><array><dict>
-        <key>UTTypeIdentifier</key><string>com.garmin.tcx</string>
-        <key>UTTypeDescription</key><string>Training Center XML</string>
-        <key>UTTypeConformsTo</key><array><string>public.xml</string></array>
-        <key>UTTypeTagSpecification</key><dict><key>public.filename-extension</key><array><string>tcx</string></array></dict>
+    <key>LSApplicationQueriesSchemes</key><array><string>strava</string></array>
+    <key>CFBundleURLTypes</key><array><dict>
+        <key>CFBundleURLName</key><string>com.barclayd.healthimport.strava</string>
+        <key>CFBundleURLSchemes</key><array><string>healthimport-strava</string></array>
     </dict></array>
 </dict></plist>

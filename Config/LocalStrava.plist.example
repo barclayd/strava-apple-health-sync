@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>clientID</key><string>YOUR_CLIENT_ID</string>
+    <key>clientSecret</key><string>YOUR_CLIENT_SECRET</string>
+    <key>callbackHost</key><string>your-existing-callback-domain.example</string>
+</dict></plist>

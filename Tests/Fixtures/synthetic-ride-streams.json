@@ -1,0 +1,9 @@
+{
+  "time":{"data":[0,40,80,120],"original_size":4,"resolution":"high","series_type":"time"},
+  "latlng":{"data":[[51.5,-0.1],[51.501,-0.1],[51.502,-0.1],[51.503,-0.1]],"original_size":4,"resolution":"high","series_type":"time"},
+  "altitude":{"data":[10,12,15,18],"original_size":4,"resolution":"high","series_type":"time"},
+  "heartrate":{"data":[100,110,120,115],"original_size":4,"resolution":"high","series_type":"time"},
+  "watts":{"data":[100,200,0,120],"original_size":4,"resolution":"high","series_type":"time"},
+  "cadence":{"data":[70,80,0,75],"original_size":4,"resolution":"high","series_type":"time"},
+  "velocity_smooth":{"data":[5,7,0,6],"original_size":4,"resolution":"high","series_type":"time"}
+}
