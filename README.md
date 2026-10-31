@@ -80,6 +80,14 @@ The redirect is `healthimport-strava://YOUR_CALLBACK_HOST/oauth/callback`. It us
 
 The simulator offers **Preview synthetic history sync** under Other options. It uses bundled invented activities, makes no Strava requests and can write only to simulator Health.
 
+### Avoiding a Strava–Health sync loop
+
+Users do not need to turn off Strava's Automatic Uploads. [Strava's current Health integration documentation](https://support.strava.com/en-us/articles/15402024-apple-health-and-strava), checked 31 October 2026, says workouts uploaded to Health by third-party apps do not sync back to Strava. HealthKit assigns our saved workouts and samples the `com.barclayd.healthimport` source; the importer does not impersonate Apple Workout or an Apple Watch. Integration tests check that source after reading the records back.
+
+Our Strava connection requests activity read access and has no activity-upload implementation. The original Strava activity ID also remains attached to our Health records for our own duplicate detection; it is not a cross-app “do not upload” flag. HealthKit does not give this importer a per-workout switch to block another authorised app from reading or uploading it. The loop prevention therefore depends on Strava's documented third-party exclusion, and does not cover a separate sync app configured to upload Health workouts to Strava.
+
+Physical-device acceptance: with Strava's existing Automatic Uploads setting enabled, import a recent activity and confirm it neither appears as a new upload candidate nor creates a duplicate in Strava. Use a recent activity because an old historical workout is also excluded by Strava's 30-day import window. This external-app behaviour must be rechecked if Strava changes its integration; our simulator tests verify source attribution, not Strava's uploader.
+
 ### Device diagnostics
 
 Debug builds keep the last 200 diagnostic events from the current app session in `Library/Caches/health-import-diagnostics.log`, protected while the phone is locked and excluded from backups. The log contains fixed event names, timestamps and HTTP/error status numbers only. No response bodies, URLs, tokens, activity identifiers, names, coordinates or Health measurements are logged. Release builds write no diagnostic file.
@@ -136,7 +144,7 @@ API requests use an ephemeral session with no cookies or disk cache, reject redi
 
 `App` contains the SwiftUI interface and the HealthKit writer. All import operations are serialised by the model. A journal entry is persisted before writing to Health, and every sample carries an app-specific transaction marker. On failure, cleanup targets that marker and the app's own Health source. An interrupted entry remains available for retrying cleanup. New imports are blocked while cleanup is pending.
 
-Strava imports use `HKWorkoutBuilder` to produce native cycling statistics from timestamped samples. The Strava elapsed interval is preserved. Energy is one source-total sample, not an invented calorie curve. Zero power/cadence/speed samples are retained; zero heart rate is treated as missing. All samples and the workout carry the same undo transaction marker.
+Strava imports use `HKWorkoutBuilder` to produce native cycling statistics from timestamped samples. The Strava elapsed interval is preserved. Energy uses the source total, apportioned across unpaused intervals when necessary; it is not a measured calorie curve. Zero power/cadence/speed samples are retained; zero heart rate is treated as missing. All samples and the workout carry the same undo transaction marker.
 
 TCX imports retain HealthKit's deprecated explicit-duration initializer and sample association API because TCX supplies timer duration and an elapsed interval without an exact pause timeline. This preserves both without inventing pauses. Subtracting pauses from the end timestamp would corrupt chronology. Xcode reports the two expected deprecation warnings for that fallback.
 

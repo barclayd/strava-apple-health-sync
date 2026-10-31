@@ -171,7 +171,14 @@ final class HealthWriterTests: XCTestCase {
             store.execute(HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit,
                                        sortDescriptors: nil) { _, samples, error in
                 if let error { continuation.resume(throwing: error) }
-                else { continuation.resume(returning: samples ?? []) }
+                else {
+                    // Strava's native Health importer excludes third-party sources. Verify our
+                    // workouts and associated samples retain this app's actual HealthKit source.
+                    for sample in samples ?? [] {
+                        XCTAssertEqual(sample.sourceRevision.source.bundleIdentifier, "com.barclayd.healthimport")
+                    }
+                    continuation.resume(returning: samples ?? [])
+                }
             })
         }
     }
