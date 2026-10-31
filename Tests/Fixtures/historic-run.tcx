@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Entirely synthetic fixture. Coordinates describe an invented short route. -->
+<TrainingCenterDatabase xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2">
+  <Activities><Activity Sport="Running">
+    <Id>2018-06-12T07:00:00Z</Id>
+    <Lap StartTime="2018-06-12T07:00:00Z">
+      <TotalTimeSeconds>1800</TotalTimeSeconds><DistanceMeters>5000</DistanceMeters><Calories>320</Calories>
+      <Track>
+        <Trackpoint><Time>2018-06-12T07:00:00Z</Time><Position><LatitudeDegrees>51.5060</LatitudeDegrees><LongitudeDegrees>-0.1720</LongitudeDegrees></Position><AltitudeMeters>20</AltitudeMeters><HeartRateBpm><Value>105</Value></HeartRateBpm></Trackpoint>
+        <Trackpoint><Time>2018-06-12T07:10:00Z</Time><Position><LatitudeDegrees>51.5070</LatitudeDegrees><LongitudeDegrees>-0.1730</LongitudeDegrees></Position><AltitudeMeters>21</AltitudeMeters><HeartRateBpm><Value>138</Value></HeartRateBpm></Trackpoint>
+        <Trackpoint><Time>2018-06-12T07:20:00Z</Time><Position><LatitudeDegrees>51.5080</LatitudeDegrees><LongitudeDegrees>-0.1740</LongitudeDegrees></Position><AltitudeMeters>22</AltitudeMeters><HeartRateBpm><Value>145</Value></HeartRateBpm></Trackpoint>
+        <Trackpoint><Time>2018-06-12T07:30:00Z</Time><Position><LatitudeDegrees>51.5090</LatitudeDegrees><LongitudeDegrees>-0.1750</LongitudeDegrees></Position><AltitudeMeters>20</AltitudeMeters><HeartRateBpm><Value>130</Value></HeartRateBpm></Trackpoint>
+      </Track>
+    </Lap>
+  </Activity></Activities>
+</TrainingCenterDatabase>

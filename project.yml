@@ -1,0 +1,44 @@
+name: HealthImport
+options:
+  bundleIdPrefix: com.barclayd
+  deploymentTarget:
+    iOS: '17.0'
+packages:
+  ActivityImportCore:
+    path: .
+settings:
+  base:
+    SWIFT_VERSION: '6.0'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    CODE_SIGN_STYLE: Automatic
+targets:
+  HealthImport:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Tests/Fixtures/historic-run.tcx
+        buildPhase: resources
+    dependencies:
+      - package: ActivityImportCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.barclayd.healthimport
+        TARGETED_DEVICE_FAMILY: '1,2'
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: App/Info.plist
+        CODE_SIGN_ENTITLEMENTS: App/HealthImport.entitlements
+    scheme:
+      testTargets: [HealthImportTests]
+  HealthImportTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [HealthKitTests]
+    dependencies:
+      - target: HealthImport
+      - package: ActivityImportCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.barclayd.healthimport.tests
