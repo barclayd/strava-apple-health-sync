@@ -32,7 +32,8 @@ Limits:
 * Missing streams produce a summary-only preview. No heart-rate or route samples are invented
 * TCX calories, cadence and power remain unsupported. Strava’s calorie value has no active/resting split: active energy is written only when the user enables that interpretation. No resting calories are fabricated
 * Only available cycling streams become Health samples. Summary-only power/cadence averages are not expanded into invented time series. Device/Strava estimates retain their source limitations
-* No fabricated sensor readings, pause events, calorie totals, location accuracy or missing data
+* Route altitudes preserve the source's elevation profile, including zero and negative elevations. Missing altitudes remain invalid. Strava and TCX do not supply recording accuracy: imported route points use a documented 50 m accuracy assumption so Core Location treats supplied coordinates/altitudes as valid. Route metadata labels this assumption; it is not measured sensor precision or a guaranteed error bound
+* No fabricated sensor readings, pause events, calorie totals or missing altitude values
 * Ambiguous duplicates are blocked, with no override in this first POC
 * Read permission can be denied or limited without a distinguishable empty-result error. Users must allow full workout history and review the date in Health. Cross-app duplicate prevention cannot be guaranteed when Health hides data
 * When compiled with Xcode 27.1 / Swift 6.4 or later, the app also checks iOS 27's earliest-authorised-date API and blocks imports outside a known limited history window. Older toolchains retain the explicit user review safeguard
@@ -83,7 +84,7 @@ xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-For the HealthKit integration tests, first import both synthetic examples in a dedicated simulator and grant Health access, enabling active energy for the synthetic ride. Tests check saved values, cycling statistics, duplicate matching, route/sample counts and scoped undo. They skip on physical devices and simulators without write permission. Use that simulator's ID:
+For the HealthKit integration tests, first import both synthetic examples in a dedicated simulator and grant Health access, enabling active energy for the synthetic ride. Tests check saved values, cycling statistics, duplicate matching, route/sample counts, round-trip route altitude validity (including missing, zero and negative values) and scoped undo. They skip on physical devices and simulators without write permission. Use that simulator's ID:
 
 ```sh
 xcodebuild -project HealthImport.xcodeproj -scheme HealthImport \

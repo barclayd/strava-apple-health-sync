@@ -1,5 +1,6 @@
 import XCTest
 import HealthKit
+import CoreLocation
 import ActivityImportCore
 @testable import HealthImport
 
@@ -37,6 +38,16 @@ final class HealthWriterTests: XCTestCase {
                 let samples = try await query(store, type, record)
                 XCTAssertEqual(samples.count, 4)
             }
+            let routes = try await query(store, HKSeriesType.workoutRoute(), record)
+            let route = try XCTUnwrap(routes.first as? HKWorkoutRoute)
+            let locations = try await routeLocations(store, route)
+            XCTAssertEqual(locations.map(\.altitude), [10, 12, 15, 18])
+            XCTAssertEqual(locations.map(\.timestamp), activity.routePoints.map(\.date))
+            XCTAssertTrue(locations.allSatisfy { $0.verticalAccuracy > 0 && $0.horizontalAccuracy > 0 },
+                          "Fitness must receive valid altitude samples to display an elevation profile")
+            XCTAssertEqual(route.metadata?["com.barclayd.healthimport.routeAccuracySource"] as? String,
+                           "Import assumption; recording accuracy unavailable")
+            XCTAssertEqual(route.metadata?["com.barclayd.healthimport.assumedRouteAccuracyMeters"] as? Double, 50)
             try await writer.undo(record)
             for type in types { let remaining = try await query(store, type, record); XCTAssertTrue(remaining.isEmpty) }
         } catch { try? await writer.undo(record); throw error }
@@ -53,7 +64,11 @@ final class HealthWriterTests: XCTestCase {
         try XCTSkipUnless(required.allSatisfy { store.authorizationStatus(for: $0) == .sharingAuthorized },
                           "First import the synthetic example in this simulator and allow Health access.")
         let url = try XCTUnwrap(Bundle.main.url(forResource: "historic-run", withExtension: "tcx"))
+        // Sea-level and below-sea-level altitudes are valid; an absent reading is not zero.
         let xml = try String(contentsOf: url, encoding: .utf8)
+            .replacingOccurrences(of: "<AltitudeMeters>20</AltitudeMeters>", with: "<AltitudeMeters>-5</AltitudeMeters>")
+            .replacingOccurrences(of: "<AltitudeMeters>21</AltitudeMeters>", with: "<AltitudeMeters>0</AltitudeMeters>")
+            .replacingOccurrences(of: "<AltitudeMeters>22</AltitudeMeters>", with: "")
         let first = try XCTUnwrap(TCXReader.read(Data(xml.replacingOccurrences(of: "2018-", with: "2016-").utf8)).first)
         let second = try XCTUnwrap(TCXReader.read(Data(xml.replacingOccurrences(of: "2018-", with: "2017-").utf8)).first)
         let record = ImportRecord(activity: first)
@@ -78,6 +93,10 @@ final class HealthWriterTests: XCTestCase {
             let routes = try await query(store, HKSeriesType.workoutRoute(), record)
             XCTAssertEqual(routes.count, 1)
             XCTAssertEqual((routes.first as? HKWorkoutRoute)?.count, 4)
+            let locations = try await routeLocations(store, XCTUnwrap(routes.first as? HKWorkoutRoute))
+            XCTAssertEqual(locations.count, 4)
+            XCTAssertEqual(locations.filter { $0.verticalAccuracy > 0 }.map(\.altitude), [-5, 0, -5])
+            XCTAssertLessThan(try XCTUnwrap(locations.first { $0.timestamp == first.routePoints[2].date }).verticalAccuracy, 0)
             try await writer.save(second, record: sentinel)
             try await writer.undo(record)
             for type in required {
@@ -95,6 +114,14 @@ final class HealthWriterTests: XCTestCase {
             throw error
         }
         #endif
+    }
+
+    @MainActor private func routeLocations(_ store: HKHealthStore, _ route: HKWorkoutRoute) async throws -> [CLLocation] {
+        var result: [CLLocation] = []
+        for try await location in HKWorkoutRouteQueryDescriptor(route).results(for: store) {
+            result.append(location)
+        }
+        return result
     }
 
     @MainActor private func query(_ store: HKHealthStore, _ type: HKSampleType, _ record: ImportRecord) async throws -> [HKSample] {

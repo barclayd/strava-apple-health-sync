@@ -134,15 +134,24 @@ import ActivityImportCore
         }
         if !activity.routePoints.isEmpty {
             let builder = HKWorkoutRouteBuilder(healthStore: store, device: nil)
+            // Core Location treats negative accuracy as INVALID, not merely unknown.
+            // Strava/TCX supply no sensor accuracy. Use an explicit import assumption
+            // for supplied coordinates/altitudes; never mark a missing altitude valid.
+            // This 50 m compatibility value is not a measured uncertainty or guarantee.
+            let assumedAccuracy: CLLocationAccuracy = 50
             let locations = activity.routePoints.map { point in
                 CLLocation(coordinate: CLLocationCoordinate2D(latitude: point.latitude!, longitude: point.longitude!),
-                           altitude: point.altitude ?? 0, horizontalAccuracy: -1, verticalAccuracy: -1,
+                           altitude: point.altitude ?? 0, horizontalAccuracy: assumedAccuracy,
+                           verticalAccuracy: point.altitude == nil ? -1 : assumedAccuracy,
                            timestamp: point.date)
             }
             for offset in stride(from: 0, to: locations.count, by: 500) {
                 try await builder.insertRouteData(Array(locations[offset..<min(offset + 500, locations.count)]))
             }
-            _ = try await builder.finishRoute(with: workout, metadata: metadata("route"))
+            var routeMetadata = metadata("route")
+            routeMetadata["com.barclayd.healthimport.routeAccuracySource"] = "Import assumption; recording accuracy unavailable"
+            routeMetadata["com.barclayd.healthimport.assumedRouteAccuracyMeters"] = assumedAccuracy
+            _ = try await builder.finishRoute(with: workout, metadata: routeMetadata)
         }
     }
 
